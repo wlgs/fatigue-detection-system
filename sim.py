@@ -31,8 +31,10 @@ class RestRecommendationSystem:
         self.setup_bayesian_network()
         self.rest_threshold = 30.0
         self.simulation_running = False
+        self.simulation_thread = None
 
     def setup_bayesian_network(self):
+        # [Previous Bayesian Network setup code remains the same]
         # Define the structure of the Bayesian Network
         self.model = BayesianNetwork([
             ('TimeOfDay', 'Fatigue'),
@@ -58,7 +60,7 @@ class RestRecommendationSystem:
         cpd_traffic = TabularCPD('Traffic', 2, [[0.6], [0.4]])  # Light/Heavy
         cpd_road = TabularCPD('RoadType', 2, [[0.7], [0.3]])  # Highway/Local
 
-        # Fatigue CPD with 4 evidence variables (2^4 = 16 combinations)
+        # Fatigue CPD
         fatigue_probs = np.array([
             [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
                 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05],
@@ -73,13 +75,11 @@ class RestRecommendationSystem:
             evidence_card=[2, 2, 2, 2]
         )
 
-        # Risk CPD with 5 evidence variables (2^5 = 32 combinations)
+        # Risk CPD
         risk_probs = np.zeros((2, 32))
-        # Fill probability values for all combinations
         for i in range(32):
-            # Decreasing probability of low risk
             risk_probs[0, i] = 0.9 - (i * 0.02)
-            risk_probs[1, i] = 1 - risk_probs[0, i]  # Probability of high risk
+            risk_probs[1, i] = 1 - risk_probs[0, i]
 
         cpd_risk = TabularCPD(
             'Risk', 2,
@@ -88,15 +88,12 @@ class RestRecommendationSystem:
             evidence_card=[2, 2, 2, 2, 2]
         )
 
-        # Add CPDs to the model
         self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_speed, cpd_pulse, cpd_eyelid,
                             cpd_weather, cpd_traffic, cpd_road, cpd_fatigue, cpd_risk)
 
-        # Initialize inference
         self.inference = VariableElimination(self.model)
 
     def calculate_rest_points_loss(self):
-        # Convert current state to evidence
         evidence = {
             'TimeOfDay': 1 if self.driver_state.time_of_day == "night" else 0,
             'TimeSinceRest': 1 if (datetime.datetime.now() - self.driver_state.last_rest_time).seconds > 7200 else 0,
@@ -108,17 +105,14 @@ class RestRecommendationSystem:
             'RoadType': 1 if self.driver_state.road_type == "local" else 0
         }
 
-        # Query the Bayesian network
         result = self.inference.query(['Risk'], evidence=evidence)
-        risk_prob = result.values[1]  # Probability of high risk
+        risk_prob = result.values[1]
 
-        # Calculate rest points loss based on risk
-        base_loss = 0.5  # Base loss per tick
-        risk_multiplier = 1 + (risk_prob * 2)  # Higher risk means faster loss
+        base_loss = 0.5
+        risk_multiplier = 1 + (risk_prob * 2)
         return base_loss * risk_multiplier
 
     def simulate_sensor_data(self):
-        # Simulate changes in driver state
         self.driver_state.pulse += random.uniform(-2, 2)
         self.driver_state.pulse = max(60, min(100, self.driver_state.pulse))
 
@@ -133,65 +127,83 @@ class RestRecommendationSystem:
         current_hour = datetime.datetime.now().hour
         self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
 
-    def run_simulation(self):
+    def update_simulation(self):
+        """Thread function to update simulation state"""
+        while self.simulation_running:
+            self.simulate_sensor_data()
+            time.sleep(1/60)  # Simulate at 60 Hz
+
+    def run(self):
+        """Main function to run on the main thread"""
         pygame.init()
         screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("Driver Rest Recommendation System")
         clock = pygame.time.Clock()
         font = pygame.font.Font(None, 36)
 
-        self.simulation_running = True
         false_alarms = 0
         total_predictions = 0
 
-        while self.simulation_running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.simulation_running = False
+        # Start simulation in separate thread
+        self.simulation_running = True
+        self.simulation_thread = threading.Thread(
+            target=self.update_simulation)
+        self.simulation_thread.start()
 
-            self.simulate_sensor_data()
-            rest_loss = self.calculate_rest_points_loss()
-            self.driver_state.rest_points -= rest_loss
+        try:
+            while self.simulation_running:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.simulation_running = False
 
-            rest_needed = self.driver_state.rest_points < self.rest_threshold
+                rest_loss = self.calculate_rest_points_loss()
+                self.driver_state.rest_points -= rest_loss
 
-            if rest_needed:
-                self.driver_state.rest_points = 100
-                self.driver_state.last_rest_time = datetime.datetime.now()
-                false_alarms += random.random() < 0.1
-                total_predictions += 1
+                rest_needed = self.driver_state.rest_points < self.rest_threshold
+                if rest_needed:
+                    self.driver_state.rest_points = 100
+                    self.driver_state.last_rest_time = datetime.datetime.now()
+                    false_alarms += random.random() < 0.1
+                    total_predictions += 1
 
-            screen.fill((255, 255, 255))
+                # Rendering
+                screen.fill((255, 255, 255))
 
-            pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
-            pygame.draw.rect(screen, (0, 255, 0),
-                             (50, 50, self.driver_state.rest_points * 2, 30))
+                pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
+                pygame.draw.rect(screen, (0, 255, 0), (50, 50,
+                                 self.driver_state.rest_points * 2, 30))
 
-            texts = [
-                f"Rest Points: {self.driver_state.rest_points:.1f}",
-                f"Speed: {self.driver_state.current_speed:.1f} km/h",
-                f"Pulse: {self.driver_state.pulse:.1f}",
-                f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
-                f"Time of Day: {self.driver_state.time_of_day}",
-                f"False Alarms: {false_alarms}",
-                f"Accuracy: {(1 - false_alarms/max(1, total_predictions))*100:.1f}%"
-            ]
+                texts = [
+                    f"Rest Points: {self.driver_state.rest_points:.1f}",
+                    f"Speed: {self.driver_state.current_speed:.1f} km/h",
+                    f"Pulse: {self.driver_state.pulse:.1f}",
+                    f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
+                    f"Time of Day: {self.driver_state.time_of_day}",
+                    f"False Alarms: {false_alarms}",
+                    f"Accuracy: {(1 - false_alarms/max(1, total_predictions))*100:.1f}%"
+                ]
 
-            for i, text in enumerate(texts):
-                surface = font.render(text, True, (0, 0, 0))
-                screen.blit(surface, (50, 100 + i * 40))
+                for i, text in enumerate(texts):
+                    surface = font.render(text, True, (0, 0, 0))
+                    screen.blit(surface, (50, 100 + i * 40))
 
-            pygame.display.flip()
-            clock.tick(60)
+                pygame.display.flip()
+                clock.tick(60)
 
-        pygame.quit()
+        finally:
+            self.simulation_running = False
+            if self.simulation_thread:
+                self.simulation_thread.join()
+            pygame.quit()
 
     def start(self):
-        simulation_thread = threading.Thread(target=self.run_simulation)
-        simulation_thread.start()
+        """Start the system - called from main thread"""
+        self.run()  # Run directly on main thread
 
     def stop(self):
         self.simulation_running = False
+        if self.simulation_thread:
+            self.simulation_thread.join()
 
 
 if __name__ == "__main__":
