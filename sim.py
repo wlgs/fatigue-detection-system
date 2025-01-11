@@ -47,27 +47,18 @@ class RestRecommendationSystem:
         ])
 
         # Define CPDs (Conditional Probability Distributions)
-        # Note: These probabilities are simplified for demonstration
         cpd_time = TabularCPD('TimeOfDay', 2, [[0.7], [0.3]])  # Day/Night
-
         cpd_time_since_rest = TabularCPD(
             'TimeSinceRest', 2, [[0.8], [0.2]])  # Short/Long
-
-        # Added Speed CPD (Normal/High)
-        cpd_speed = TabularCPD('Speed', 2, [[0.7], [0.3]])
-
+        cpd_speed = TabularCPD('Speed', 2, [[0.7], [0.3]])  # Normal/High
         cpd_pulse = TabularCPD('Pulse', 2, [[0.7], [0.3]])  # Normal/High
-
         cpd_eyelid = TabularCPD('EyelidMovement', 2, [
                                 [0.6], [0.4]])  # Normal/Slow
-
         cpd_weather = TabularCPD('Weather', 2, [[0.8], [0.2]])  # Clear/Bad
-
         cpd_traffic = TabularCPD('Traffic', 2, [[0.6], [0.4]])  # Light/Heavy
-
         cpd_road = TabularCPD('RoadType', 2, [[0.7], [0.3]])  # Highway/Local
 
-        # Fixed CPD for fatigue - now with correct dimensions (2^4 = 16 combinations)
+        # Fatigue CPD with 4 evidence variables (2^4 = 16 combinations)
         fatigue_probs = np.array([
             [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
                 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05],
@@ -82,19 +73,19 @@ class RestRecommendationSystem:
             evidence_card=[2, 2, 2, 2]
         )
 
-        # Risk CPD (2^4 = 16 combinations for evidence variables)
-        risk_probs = np.array([
-            [0.95, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
-                0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05],
-            [0.05, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
-                0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
-        ])
+        # Risk CPD with 5 evidence variables (2^5 = 32 combinations)
+        risk_probs = np.zeros((2, 32))
+        # Fill probability values for all combinations
+        for i in range(32):
+            # Decreasing probability of low risk
+            risk_probs[0, i] = 0.9 - (i * 0.02)
+            risk_probs[1, i] = 1 - risk_probs[0, i]  # Probability of high risk
 
         cpd_risk = TabularCPD(
             'Risk', 2,
             risk_probs,
-            evidence=['Fatigue', 'Weather', 'Traffic', 'RoadType'],
-            evidence_card=[2, 2, 2, 2]
+            evidence=['Speed', 'Fatigue', 'Weather', 'Traffic', 'RoadType'],
+            evidence_card=[2, 2, 2, 2, 2]
         )
 
         # Add CPDs to the model
@@ -109,7 +100,7 @@ class RestRecommendationSystem:
         evidence = {
             'TimeOfDay': 1 if self.driver_state.time_of_day == "night" else 0,
             'TimeSinceRest': 1 if (datetime.datetime.now() - self.driver_state.last_rest_time).seconds > 7200 else 0,
-            'Speed': 1 if self.driver_state.current_speed > 100 else 0,  # Added Speed evidence
+            'Speed': 1 if self.driver_state.current_speed > 100 else 0,
             'Pulse': 1 if self.driver_state.pulse > 85 else 0,
             'EyelidMovement': 1 if self.driver_state.eyelid_movement < 0.7 else 0,
             'Weather': 1 if self.driver_state.weather_condition == "bad" else 0,
@@ -135,17 +126,14 @@ class RestRecommendationSystem:
         self.driver_state.eyelid_movement = max(
             0.3, min(1.0, self.driver_state.eyelid_movement))
 
-        # Simulate speed changes
         self.driver_state.current_speed += random.uniform(-5, 5)
         self.driver_state.current_speed = max(
             0, min(130, self.driver_state.current_speed))
 
-        # Simulate time of day changes
         current_hour = datetime.datetime.now().hour
         self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
 
     def run_simulation(self):
-        # Initialize Pygame
         pygame.init()
         screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("Driver Rest Recommendation System")
@@ -161,30 +149,24 @@ class RestRecommendationSystem:
                 if event.type == pygame.QUIT:
                     self.simulation_running = False
 
-            # Update simulation
             self.simulate_sensor_data()
             rest_loss = self.calculate_rest_points_loss()
             self.driver_state.rest_points -= rest_loss
 
-            # Check if rest is needed
             rest_needed = self.driver_state.rest_points < self.rest_threshold
 
-            # Simulate rest if needed
             if rest_needed:
                 self.driver_state.rest_points = 100
                 self.driver_state.last_rest_time = datetime.datetime.now()
-                false_alarms += random.random() < 0.1  # 10% chance of false alarm
+                false_alarms += random.random() < 0.1
                 total_predictions += 1
 
-            # Render visualization
             screen.fill((255, 255, 255))
 
-            # Draw rest points bar
             pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
             pygame.draw.rect(screen, (0, 255, 0),
                              (50, 50, self.driver_state.rest_points * 2, 30))
 
-            # Draw text information
             texts = [
                 f"Rest Points: {self.driver_state.rest_points:.1f}",
                 f"Speed: {self.driver_state.current_speed:.1f} km/h",
@@ -200,7 +182,7 @@ class RestRecommendationSystem:
                 screen.blit(surface, (50, 100 + i * 40))
 
             pygame.display.flip()
-            clock.tick(60)  # 60 FPS
+            clock.tick(60)
 
         pygame.quit()
 
