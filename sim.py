@@ -9,6 +9,7 @@ import time
 import pygame
 import threading
 from dataclasses import dataclass
+from collections import deque
 
 
 @dataclass
@@ -17,7 +18,7 @@ class DriverState:
     last_rest_time: datetime.datetime = datetime.datetime.now()
     current_speed: float = 0.0
     pulse: float = 70.0
-    eyelid_movement: float = 1.0  # 1.0 is normal, lower values indicate tiredness
+    eyelid_movement: float = 1.0
     temperature: float = 36.6
     weather_condition: str = "clear"
     traffic_density: str = "low"
@@ -32,10 +33,11 @@ class RestRecommendationSystem:
         self.rest_threshold = 30.0
         self.simulation_running = False
         self.simulation_thread = None
+        self.rest_points_history = deque(maxlen=200)  # Store last 200 points
 
+    # [Previous Bayesian Network setup and calculation methods remain the same]
     def setup_bayesian_network(self):
-        # [Previous Bayesian Network setup code remains the same]
-        # Define the structure of the Bayesian Network
+        # [Previous Bayesian Network setup code remains exactly the same]
         self.model = BayesianNetwork([
             ('TimeOfDay', 'Fatigue'),
             ('TimeSinceRest', 'Fatigue'),
@@ -48,19 +50,15 @@ class RestRecommendationSystem:
             ('RoadType', 'Risk')
         ])
 
-        # Define CPDs (Conditional Probability Distributions)
-        cpd_time = TabularCPD('TimeOfDay', 2, [[0.7], [0.3]])  # Day/Night
-        cpd_time_since_rest = TabularCPD(
-            'TimeSinceRest', 2, [[0.8], [0.2]])  # Short/Long
-        cpd_speed = TabularCPD('Speed', 2, [[0.7], [0.3]])  # Normal/High
-        cpd_pulse = TabularCPD('Pulse', 2, [[0.7], [0.3]])  # Normal/High
-        cpd_eyelid = TabularCPD('EyelidMovement', 2, [
-                                [0.6], [0.4]])  # Normal/Slow
-        cpd_weather = TabularCPD('Weather', 2, [[0.8], [0.2]])  # Clear/Bad
-        cpd_traffic = TabularCPD('Traffic', 2, [[0.6], [0.4]])  # Light/Heavy
-        cpd_road = TabularCPD('RoadType', 2, [[0.7], [0.3]])  # Highway/Local
+        cpd_time = TabularCPD('TimeOfDay', 2, [[0.7], [0.3]])
+        cpd_time_since_rest = TabularCPD('TimeSinceRest', 2, [[0.8], [0.2]])
+        cpd_speed = TabularCPD('Speed', 2, [[0.7], [0.3]])
+        cpd_pulse = TabularCPD('Pulse', 2, [[0.7], [0.3]])
+        cpd_eyelid = TabularCPD('EyelidMovement', 2, [[0.6], [0.4]])
+        cpd_weather = TabularCPD('Weather', 2, [[0.8], [0.2]])
+        cpd_traffic = TabularCPD('Traffic', 2, [[0.6], [0.4]])
+        cpd_road = TabularCPD('RoadType', 2, [[0.7], [0.3]])
 
-        # Fatigue CPD
         fatigue_probs = np.array([
             [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
                 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05],
@@ -75,7 +73,6 @@ class RestRecommendationSystem:
             evidence_card=[2, 2, 2, 2]
         )
 
-        # Risk CPD
         risk_probs = np.zeros((2, 32))
         for i in range(32):
             risk_probs[0, i] = 0.9 - (i * 0.02)
@@ -112,6 +109,27 @@ class RestRecommendationSystem:
         risk_multiplier = 1 + (risk_prob * 2)
         return base_loss * risk_multiplier
 
+    def draw_graph(self, screen, x, y, width, height):
+        """Draw the rest points history graph"""
+        # Draw graph background
+        pygame.draw.rect(screen, (240, 240, 240), (x, y, width, height))
+
+        # Draw threshold line
+        threshold_y = y + height - (height * self.rest_threshold / 100)
+        pygame.draw.line(screen, (255, 0, 0), (x, threshold_y),
+                         (x + width, threshold_y), 2)
+
+        # Draw rest points history
+        if len(self.rest_points_history) > 1:
+            points = []
+            for i, value in enumerate(self.rest_points_history):
+                point_x = x + (i * width / self.rest_points_history.maxlen)
+                point_y = y + height - (height * value / 100)
+                points.append((point_x, point_y))
+
+            # Draw lines connecting points
+            pygame.draw.lines(screen, (0, 128, 0), False, points, 2)
+
     def simulate_sensor_data(self):
         self.driver_state.pulse += random.uniform(-2, 2)
         self.driver_state.pulse = max(60, min(100, self.driver_state.pulse))
@@ -128,13 +146,11 @@ class RestRecommendationSystem:
         self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
 
     def update_simulation(self):
-        """Thread function to update simulation state"""
         while self.simulation_running:
             self.simulate_sensor_data()
-            time.sleep(1/60)  # Simulate at 60 Hz
+            time.sleep(1/60)
 
     def run(self):
-        """Main function to run on the main thread"""
         pygame.init()
         screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("Driver Rest Recommendation System")
@@ -158,6 +174,7 @@ class RestRecommendationSystem:
 
                 rest_loss = self.calculate_rest_points_loss()
                 self.driver_state.rest_points -= rest_loss
+                self.rest_points_history.append(self.driver_state.rest_points)
 
                 rest_needed = self.driver_state.rest_points < self.rest_threshold
                 if rest_needed:
@@ -169,9 +186,18 @@ class RestRecommendationSystem:
                 # Rendering
                 screen.fill((255, 255, 255))
 
+                # Draw rest points bar
                 pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
                 pygame.draw.rect(screen, (0, 255, 0), (50, 50,
                                  self.driver_state.rest_points * 2, 30))
+
+                # Draw historical graph
+                self.draw_graph(screen, 300, 50, 450, 200)
+
+                # Draw text for threshold
+                threshold_text = font.render(
+                    f"Rest Threshold: {self.rest_threshold}", True, (255, 0, 0))
+                screen.blit(threshold_text, (300, 260))
 
                 texts = [
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
@@ -185,10 +211,10 @@ class RestRecommendationSystem:
 
                 for i, text in enumerate(texts):
                     surface = font.render(text, True, (0, 0, 0))
-                    screen.blit(surface, (50, 100 + i * 40))
+                    screen.blit(surface, (50, 300 + i * 40))
 
                 pygame.display.flip()
-                clock.tick(2)
+                clock.tick(60)
 
         finally:
             self.simulation_running = False
@@ -197,8 +223,7 @@ class RestRecommendationSystem:
             pygame.quit()
 
     def start(self):
-        """Start the system - called from main thread"""
-        self.run()  # Run directly on main thread
+        self.run()
 
     def stop(self):
         self.simulation_running = False
