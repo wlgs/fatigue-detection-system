@@ -53,6 +53,9 @@ class RestRecommendationSystem:
         cpd_time_since_rest = TabularCPD(
             'TimeSinceRest', 2, [[0.8], [0.2]])  # Short/Long
 
+        # Added Speed CPD (Normal/High)
+        cpd_speed = TabularCPD('Speed', 2, [[0.7], [0.3]])
+
         cpd_pulse = TabularCPD('Pulse', 2, [[0.7], [0.3]])  # Normal/High
 
         cpd_eyelid = TabularCPD('EyelidMovement', 2, [
@@ -95,7 +98,7 @@ class RestRecommendationSystem:
         )
 
         # Add CPDs to the model
-        self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_pulse, cpd_eyelid,
+        self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_speed, cpd_pulse, cpd_eyelid,
                             cpd_weather, cpd_traffic, cpd_road, cpd_fatigue, cpd_risk)
 
         # Initialize inference
@@ -106,6 +109,7 @@ class RestRecommendationSystem:
         evidence = {
             'TimeOfDay': 1 if self.driver_state.time_of_day == "night" else 0,
             'TimeSinceRest': 1 if (datetime.datetime.now() - self.driver_state.last_rest_time).seconds > 7200 else 0,
+            'Speed': 1 if self.driver_state.current_speed > 100 else 0,  # Added Speed evidence
             'Pulse': 1 if self.driver_state.pulse > 85 else 0,
             'EyelidMovement': 1 if self.driver_state.eyelid_movement < 0.7 else 0,
             'Weather': 1 if self.driver_state.weather_condition == "bad" else 0,
@@ -130,6 +134,11 @@ class RestRecommendationSystem:
         self.driver_state.eyelid_movement += random.uniform(-0.05, 0.03)
         self.driver_state.eyelid_movement = max(
             0.3, min(1.0, self.driver_state.eyelid_movement))
+
+        # Simulate speed changes
+        self.driver_state.current_speed += random.uniform(-5, 5)
+        self.driver_state.current_speed = max(
+            0, min(130, self.driver_state.current_speed))
 
         # Simulate time of day changes
         current_hour = datetime.datetime.now().hour
@@ -178,6 +187,7 @@ class RestRecommendationSystem:
             # Draw text information
             texts = [
                 f"Rest Points: {self.driver_state.rest_points:.1f}",
+                f"Speed: {self.driver_state.current_speed:.1f} km/h",
                 f"Pulse: {self.driver_state.pulse:.1f}",
                 f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
                 f"Time of Day: {self.driver_state.time_of_day}",
