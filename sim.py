@@ -34,8 +34,8 @@ class RestRecommendationSystem:
         self.simulation_running = False
         self.simulation_thread = None
         self.rest_points_history = deque(maxlen=200)  # Store last 200 points
+        self.paused = True  # New state to track if simulation is paused
 
-    # [Previous Bayesian Network setup and calculation methods remain the same]
     def setup_bayesian_network(self):
         # [Previous Bayesian Network setup code remains exactly the same]
         self.model = BayesianNetwork([
@@ -147,12 +147,33 @@ class RestRecommendationSystem:
 
     def update_simulation(self):
         while self.simulation_running:
-            self.simulate_sensor_data()
+            if not self.paused:  # Only update if not paused
+                self.simulate_sensor_data()
             time.sleep(1/60)
+
+    def update_single_tick(self):
+        """Update simulation for a single tick when space is pressed"""
+        if self.paused:
+            self.simulate_sensor_data()
+            self.update_display_data()
+
+    def update_display_data(self):
+        """Update display data without running simulation"""
+        rest_loss = self.calculate_rest_points_loss()
+        self.driver_state.rest_points -= rest_loss
+        self.rest_points_history.append(self.driver_state.rest_points)
+
+        if self.driver_state.rest_points < self.rest_threshold:
+            self.driver_state.rest_points = 100
+            self.driver_state.last_rest_time = datetime.datetime.now()
+
+    def toggle_simulation(self):
+        """Toggle simulation pause state"""
+        self.paused = not self.paused
 
     def run(self):
         pygame.init()
-        screen = pygame.display.set_mode((800, 600))
+        screen = pygame.display.set_mode((1280, 720))
         pygame.display.set_caption("Driver Rest Recommendation System")
         clock = pygame.time.Clock()
         font = pygame.font.Font(None, 36)
@@ -171,17 +192,15 @@ class RestRecommendationSystem:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         self.simulation_running = False
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_RETURN:  # Enter key
+                            self.toggle_simulation()
+                        elif event.key == pygame.K_SPACE:  # Space key
+                            self.update_single_tick()
 
-                rest_loss = self.calculate_rest_points_loss()
-                self.driver_state.rest_points -= rest_loss
-                self.rest_points_history.append(self.driver_state.rest_points)
-
-                rest_needed = self.driver_state.rest_points < self.rest_threshold
-                if rest_needed:
-                    self.driver_state.rest_points = 100
-                    self.driver_state.last_rest_time = datetime.datetime.now()
-                    false_alarms += random.random() < 0.1
-                    total_predictions += 1
+                # Only update display data if simulation is running
+                if not self.paused:
+                    self.update_display_data()
 
                 # Rendering
                 screen.fill((255, 255, 255))
@@ -194,10 +213,15 @@ class RestRecommendationSystem:
                 # Draw historical graph
                 self.draw_graph(screen, 300, 50, 450, 200)
 
-                # Draw text for threshold
+                # Draw text for threshold and simulation state
                 threshold_text = font.render(
                     f"Rest Threshold: {self.rest_threshold}", True, (255, 0, 0))
                 screen.blit(threshold_text, (300, 260))
+
+                # Add simulation state text
+                state_text = font.render(
+                    f"Simulation {'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
+                screen.blit(state_text, (50, 100))
 
                 texts = [
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
@@ -206,7 +230,9 @@ class RestRecommendationSystem:
                     f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
                     f"Time of Day: {self.driver_state.time_of_day}",
                     f"False Alarms: {false_alarms}",
-                    f"Accuracy: {(1 - false_alarms/max(1, total_predictions))*100:.1f}%"
+                    f"Accuracy: {(1 - false_alarms/max(1, total_predictions))*100:.1f}%",
+                    "Press ENTER to toggle simulation",
+                    "Press SPACE to step forward when paused"
                 ]
 
                 for i, text in enumerate(texts):
