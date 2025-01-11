@@ -188,7 +188,7 @@ class RestRecommendationSystem:
                     screen.blit(surface, (50, 100 + i * 40))
 
                 pygame.display.flip()
-                clock.tick(60)
+                clock.tick(2)
 
         finally:
             self.simulation_running = False
