@@ -173,15 +173,12 @@ class RestRecommendationSystem:
 
     def run(self):
         pygame.init()
-        screen = pygame.display.set_mode((1280, 720))
+        screen = pygame.display.set_mode((1200, 900))
         pygame.display.set_caption("Driver Rest Recommendation System")
         clock = pygame.time.Clock()
         font = pygame.font.Font(None, 36)
 
-        false_alarms = 0
-        total_predictions = 0
-
-        # Start simulation in separate thread
+        # Start simulation in a separate thread
         self.simulation_running = True
         self.simulation_thread = threading.Thread(
             target=self.update_simulation)
@@ -208,7 +205,7 @@ class RestRecommendationSystem:
                 # Draw rest points bar
                 pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
                 pygame.draw.rect(screen, (0, 255, 0), (50, 50,
-                                 self.driver_state.rest_points * 2, 30))
+                                                       self.driver_state.rest_points * 2, 30))
 
                 # Draw historical graph
                 self.draw_graph(screen, 300, 50, 450, 200)
@@ -223,16 +220,21 @@ class RestRecommendationSystem:
                     f"Simulation {'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
                 screen.blit(state_text, (50, 100))
 
+                # Calculate time since last rest
+                time_since_rest = datetime.datetime.now() - self.driver_state.last_rest_time
+                time_since_rest_formatted = f"{time_since_rest.seconds // 3600}h {time_since_rest.seconds % 3600 // 60}m"
+
+                # Display key information
                 texts = [
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
                     f"Speed: {self.driver_state.current_speed:.1f} km/h",
                     f"Pulse: {self.driver_state.pulse:.1f}",
                     f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
                     f"Time of Day: {self.driver_state.time_of_day}",
-                    f"False Alarms: {false_alarms}",
-                    f"Accuracy: {(1 - false_alarms/max(1, total_predictions))*100:.1f}%",
-                    "Press ENTER to toggle simulation",
-                    "Press SPACE to step forward when paused"
+                    f"Weather: {self.driver_state.weather_condition}",
+                    f"Traffic: {self.driver_state.traffic_density}",
+                    f"Road Type: {self.driver_state.road_type}",
+                    f"Time Since Last Rest: {time_since_rest_formatted}",
                 ]
 
                 for i, text in enumerate(texts):
