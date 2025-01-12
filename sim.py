@@ -38,7 +38,6 @@ class RestRecommendationSystem:
         self.tick_count = 0  # Simulation tick counter
 
     def setup_bayesian_network(self):
-        # [Previous Bayesian Network setup code remains exactly the same]
         self.model = BayesianNetwork([
             ('TimeOfDay', 'Fatigue'),
             ('TimeSinceRest', 'Fatigue'),
@@ -56,9 +55,18 @@ class RestRecommendationSystem:
         cpd_speed = TabularCPD('Speed', 2, [[0.7], [0.3]])
         cpd_pulse = TabularCPD('Pulse', 2, [[0.7], [0.3]])
         cpd_eyelid = TabularCPD('EyelidMovement', 2, [[0.6], [0.4]])
-        cpd_weather = TabularCPD('Weather', 2, [[0.8], [0.2]])
         cpd_traffic = TabularCPD('Traffic', 2, [[0.6], [0.4]])
         cpd_road = TabularCPD('RoadType', 2, [[0.7], [0.3]])
+
+        # Updated Weather CPD with five states
+        weather_probs = np.array([
+            [0.7],  # Clear (most likely)
+            [0.1],  # Rain
+            [0.1],  # Fog
+            [0.05],  # Snow
+            [0.05]  # Bad weather
+        ])
+        cpd_weather = TabularCPD('Weather', 5, weather_probs)
 
         fatigue_probs = np.array([
             [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
@@ -66,7 +74,6 @@ class RestRecommendationSystem:
             [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
                 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
         ])
-
         cpd_fatigue = TabularCPD(
             'Fatigue', 2,
             fatigue_probs,
@@ -74,8 +81,11 @@ class RestRecommendationSystem:
             evidence_card=[2, 2, 2, 2]
         )
 
-        risk_probs = np.zeros((2, 32))
-        for i in range(32):
+        # 2 for Risk states, 80 for the combinations of the evidence states
+        #  2 x (2 x 2 x 5 x 2 x 2)
+        risk_probs = np.zeros((2, 80))
+        for i in range(80):
+            # Adjust based on evidence state combinations
             risk_probs[0, i] = 0.9 - (i * 0.02)
             risk_probs[1, i] = 1 - risk_probs[0, i]
 
@@ -83,7 +93,8 @@ class RestRecommendationSystem:
             'Risk', 2,
             risk_probs,
             evidence=['Speed', 'Fatigue', 'Weather', 'Traffic', 'RoadType'],
-            evidence_card=[2, 2, 2, 2, 2]
+            # Correct evidence_card for Weather (5 states)
+            evidence_card=[2, 2, 5, 2, 2]
         )
 
         self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_speed, cpd_pulse, cpd_eyelid,
