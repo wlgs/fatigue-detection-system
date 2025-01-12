@@ -34,10 +34,10 @@ class EnvironmentSimulator:
         self.weather_change_prob = 1/36
         self.weather_probabilities = {
             "clear": 0.5,
-            "rain": 0.2,
-            "fog": 0.15,
+            "rain": 0.1,
+            "fog": 0.1,
             "snow": 0.1,
-            "bad": 0.05
+            "bad": 0.2,
         }
         self.traffic_change_prob = 1/12
         self.traffic_probabilities = {
@@ -83,9 +83,12 @@ class DriverSimulator:
         driver_state.eyelid_movement = max(
             0.3, min(1.0, driver_state.eyelid_movement))
 
-        # Simulate speed changes
-        driver_state.current_speed += random.uniform(-self.speed_variance,
-                                                     self.speed_variance)
+        if driver_state.current_speed < 50:
+            driver_state.current_speed += random.uniform(
+                0, self.speed_variance)
+        else:
+            driver_state.current_speed += random.uniform(-self.speed_variance,
+                                                         self.speed_variance)
         driver_state.current_speed = max(
             0, min(130, driver_state.current_speed))
 
@@ -133,21 +136,18 @@ class FatigueEvaluator:
 
         fatigue_probs = np.zeros((2, 240))
 
-        # Fill probability matrix - this is a simplified version
         for i in range(240):
-            # Base fatigue probability
-            base_prob = 0.3
+            base_prob = 0.05
 
-            # Adjust based on index position (representing different factor combinations)
-            time_of_day_factor = 0.2 if (i // 120) else 0
-            time_since_rest_factor = 0.2 if ((i // 60) % 2) else 0
-            pulse_factor = 0.15 if ((i // 30) % 2) else 0
-            eyelid_factor = 0.25 if ((i // 15) % 2) else 0
-            weather_factor = [0, 0.05, 0.1, 0.15, 0.2][(i // 3) % 5]
-            traffic_factor = [0, 0.05, 0.1][i % 3]
+            time_of_day_factor = 0.1 if (i // 120) else 0
+            time_since_rest_factor = 0.25 if ((i // 60) % 2) else 0
+            pulse_factor = 0.1 if ((i // 30) % 2) else 0
+            eyelid_factor = 0.15 if ((i // 15) % 2) else 0
+            weather_factor = [0, 0.1, 0.2, 0.2, 0.4][(i // 3) % 5]
+            traffic_factor = [0, 0.1, 0.3][i % 3]
 
             # Combine factors
-            fatigue_prob = min(0.95, base_prob + time_of_day_factor + time_since_rest_factor +
+            fatigue_prob = min(1, base_prob + time_of_day_factor + time_since_rest_factor +
                                pulse_factor + eyelid_factor + weather_factor + traffic_factor)
 
             fatigue_probs[0, i] = 1 - fatigue_prob
@@ -166,7 +166,6 @@ class FatigueEvaluator:
         self.inference = VariableElimination(self.model)
 
     def evaluate_fatigue(self, driver_state, time_since_rest_hours):
-        # Convert continuous values to discrete states
         evidence = {
             'TimeOfDay': 1 if driver_state.time_of_day == "night" else 0,
             'TimeSinceRest': 1 if time_since_rest_hours > 2 else 0,
@@ -230,6 +229,9 @@ class RestRecommendationSystem:
 
         if self.driver_state.rest_points < self.rest_threshold:
             self.driver_state.rest_points = 100
+            self.driver_state.pulse = 70.0
+            self.driver_state.eyelid_movement = 1.0
+            self.driver_state.current_speed = 0.0
             self.driver_state.last_rest_tick = self.tick_count
 
         self.tick_count += 1
