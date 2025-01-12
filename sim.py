@@ -12,15 +12,10 @@ from dataclasses import dataclass
 from collections import deque
 
 
-# WEATHER_CHANGE_PROB = 1 / 288  # 1 change per day on average
-WEATHER_CHANGE_PROB = 1 / 36  # 1 change per day on average
-SIMULATION_SPEED_TICKS_PER_SECOND = 60
-
-
 @dataclass
 class DriverState:
     rest_points: float = 100.0
-    last_rest_tick: int = 0  # Track the tick when the last rest occurred
+    last_rest_tick: int = 0
     current_speed: float = 0.0
     pulse: float = 70.0
     eyelid_movement: float = 1.0
@@ -31,208 +26,227 @@ class DriverState:
     road_type: str = "highway"
 
 
-class RestRecommendationSystem:
+class EnvironmentSimulator:
+    """Handles simple probability-based simulation of environmental factors"""
+
     def __init__(self):
-        self.driver_state = DriverState()
+        self.weather_change_prob = 1/36
+        self.weather_probabilities = {
+            "clear": 0.5,
+            "rain": 0.2,
+            "fog": 0.15,
+            "snow": 0.1,
+            "bad": 0.05
+        }
+        self.traffic_change_prob = 1/12
+        self.traffic_probabilities = {
+            "low": 0.4,
+            "medium": 0.4,
+            "high": 0.2
+        }
+
+    def simulate_weather(self, current_weather):
+        if random.random() < self.weather_change_prob:
+            return random.choices(
+                list(self.weather_probabilities.keys()),
+                list(self.weather_probabilities.values())
+            )[0]
+        return current_weather
+
+    def simulate_traffic(self, current_traffic):
+        if random.random() < self.traffic_change_prob:
+            return random.choices(
+                list(self.traffic_probabilities.keys()),
+                list(self.traffic_probabilities.values())
+            )[0]
+        return current_traffic
+
+
+class DriverSimulator:
+    """Handles simulation of driver physiological factors"""
+
+    def __init__(self):
+        self.pulse_variance = 2.0
+        self.eyelid_variance = 0.05
+        self.speed_variance = 5.0
+
+    def simulate_physiological(self, driver_state):
+        # Simulate pulse changes
+        driver_state.pulse += random.uniform(-self.pulse_variance,
+                                             self.pulse_variance)
+        driver_state.pulse = max(60, min(100, driver_state.pulse))
+
+        # Simulate eyelid movement changes
+        driver_state.eyelid_movement += random.uniform(-self.eyelid_variance,
+                                                       self.eyelid_variance * 0.6)
+        driver_state.eyelid_movement = max(
+            0.3, min(1.0, driver_state.eyelid_movement))
+
+        # Simulate speed changes
+        driver_state.current_speed += random.uniform(-self.speed_variance,
+                                                     self.speed_variance)
+        driver_state.current_speed = max(
+            0, min(130, driver_state.current_speed))
+
+        return driver_state
+
+
+class FatigueEvaluator:
+    """Uses Bayesian Network for fatigue evaluation"""
+
+    def __init__(self):
         self.setup_bayesian_network()
-        self.rest_threshold = 30.0
-        self.simulation_running = False
-        self.simulation_thread = None
-        self.rest_points_history = deque(maxlen=200)  # Store last 200 points
-        self.paused = True  # New state to track if simulation is paused
-        self.tick_count = 0  # Simulation tick counter
-        self.display_data = {
-            'Rest Loss': 0,
-            'Base Rest Loss': 0,
-            'Risk Probability': 0
-        }  # Display data dictionary
 
     def setup_bayesian_network(self):
+        # Simplified network focused only on fatigue
         self.model = BayesianNetwork([
             ('TimeOfDay', 'Fatigue'),
             ('TimeSinceRest', 'Fatigue'),
-            ('Speed', 'Risk'),
             ('Pulse', 'Fatigue'),
             ('EyelidMovement', 'Fatigue'),
-            ('Weather', 'Risk'),
-            ('Traffic', 'Risk'),
-            ('Fatigue', 'Risk'),
-            ('RoadType', 'Risk')
+            ('Weather', 'Fatigue'),
+            ('Traffic', 'Fatigue')
         ])
 
+        # Basic CPDs
         cpd_time = TabularCPD('TimeOfDay', 2, [[0.7], [0.3]])
         cpd_time_since_rest = TabularCPD('TimeSinceRest', 2, [[0.8], [0.2]])
-        cpd_speed = TabularCPD('Speed', 2, [[0.7], [0.3]])
         cpd_pulse = TabularCPD('Pulse', 2, [[0.7], [0.3]])
         cpd_eyelid = TabularCPD('EyelidMovement', 2, [[0.6], [0.4]])
-        cpd_traffic = TabularCPD('Traffic', 2, [[0.6], [0.4]])
-        cpd_road = TabularCPD('RoadType', 2, [[0.7], [0.3]])
 
-        # Updated Weather CPD with five states
-        weather_probs = np.array([
-            [0.7],  # Clear (most likely)
-            [0.1],  # Rain
-            [0.1],  # Fog
-            [0.05],  # Snow
-            [0.05]  # Bad weather
+        # Weather impacts fatigue (5 states)
+        cpd_weather = TabularCPD('Weather', 5, [
+            [0.5],  # Clear
+            [0.2],  # Rain
+            [0.15],  # Fog
+            [0.1],  # Snow
+            [0.05]  # Bad
         ])
-        cpd_weather = TabularCPD('Weather', 5, weather_probs)
 
-        fatigue_probs = np.array([
-            [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
-                0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05],
-            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
-                0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+        # Traffic impacts fatigue (3 states)
+        cpd_traffic = TabularCPD('Traffic', 3, [
+            [0.4],  # Low
+            [0.4],  # Medium
+            [0.2]  # High
         ])
+
+        # Fatigue CPD with environmental factors
+        # Creating probability matrix for fatigue based on all factors
+        # Shape: [2, 2*2*2*2*5*3] for all combinations of input states
+        # 2 * 2 * 2 * 2 * 5 * 3 = 240 combinations
+        fatigue_probs = np.zeros((2, 240))
+
+        # Fill probability matrix - this is a simplified version
+        for i in range(240):
+            # Base fatigue probability
+            base_prob = 0.3
+
+            # Adjust based on index position (representing different factor combinations)
+            time_of_day_factor = 0.2 if (i // 120) else 0
+            time_since_rest_factor = 0.2 if ((i // 60) % 2) else 0
+            pulse_factor = 0.15 if ((i // 30) % 2) else 0
+            eyelid_factor = 0.25 if ((i // 15) % 2) else 0
+            weather_factor = [0, 0.05, 0.1, 0.15, 0.2][(i // 3) % 5]
+            traffic_factor = [0, 0.05, 0.1][i % 3]
+
+            # Combine factors
+            fatigue_prob = min(0.95, base_prob + time_of_day_factor + time_since_rest_factor +
+                               pulse_factor + eyelid_factor + weather_factor + traffic_factor)
+
+            fatigue_probs[0, i] = 1 - fatigue_prob
+            fatigue_probs[1, i] = fatigue_prob
+
         cpd_fatigue = TabularCPD(
             'Fatigue', 2,
             fatigue_probs,
-            evidence=['TimeOfDay', 'TimeSinceRest', 'Pulse', 'EyelidMovement'],
-            evidence_card=[2, 2, 2, 2]
+            evidence=['TimeOfDay', 'TimeSinceRest', 'Pulse',
+                      'EyelidMovement', 'Weather', 'Traffic'],
+            evidence_card=[2, 2, 2, 2, 5, 3]
         )
 
-        risk_probs = np.zeros((2, 80))
-
-        for i in range(80):
-            base_risk = 0.7 - (i * 0.01)  # Slightly lower base risk
-
-            risk_factor = base_risk
-            risk_probs[0, i] = max(0, min(1, risk_factor))  # Lower risk state
-            risk_probs[1, i] = 1 - risk_probs[0, i]  # Higher risk state
-
-        print(risk_probs)
-
-        # Add the updated CPDs to the model
-        cpd_risk = TabularCPD(
-            'Risk', 2,
-            risk_probs,
-            evidence=['Speed', 'Fatigue', 'Weather', 'Traffic', 'RoadType'],
-            # Correct evidence_card for Weather (5 states)
-            evidence_card=[2, 2, 5, 2, 2]
-        )
-
-        self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_speed, cpd_pulse, cpd_eyelid,
-                            cpd_weather, cpd_traffic, cpd_road, cpd_fatigue, cpd_risk)
-
+        self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_pulse,
+                            cpd_eyelid, cpd_weather, cpd_traffic, cpd_fatigue)
         self.inference = VariableElimination(self.model)
 
-    def calculate_time_since_rest(self):
-        ticks_since_rest = self.tick_count - self.driver_state.last_rest_tick
-        total_minutes = ticks_since_rest * 5  # Each tick = 5 minutes
-        hours = total_minutes // 60
-        minutes = total_minutes % 60
-        return f"{hours}h {minutes}m"
-
-    def calculate_rest_points_loss(self):
+    def evaluate_fatigue(self, driver_state, time_since_rest_hours):
+        # Convert continuous values to discrete states
         evidence = {
-            'TimeOfDay': 1,  # Whether it's day or night, we assume it contributes positively
-            # Assume that being rested for more than 2 hours always contributes to fatigue/risk
-            'TimeSinceRest': 1,
-            # Speed always contributes positively (e.g., speeding increases risk/fatigue)
-            'Speed': 1,
-            'Pulse': 1,  # High pulse rate always contributes to fatigue/risk
-            # Reduced eyelid movement (tiredness) always contributes to fatigue/risk
-            'EyelidMovement': 1,
-            'Weather': 1,  # Assume bad weather conditions always contribute to risk/fatigue
-            'Traffic': 1,  # Assume high traffic always contributes to risk/fatigue
-            'RoadType': 1  # Assume local roads always contribute to risk/fatigue
+            'TimeOfDay': 1 if driver_state.time_of_day == "night" else 0,
+            'TimeSinceRest': 1 if time_since_rest_hours > 2 else 0,
+            'Pulse': 1 if driver_state.pulse > 85 else 0,
+            'EyelidMovement': 1 if driver_state.eyelid_movement < 0.6 else 0,
+            'Weather': {
+                'clear': 0,
+                'rain': 1,
+                'fog': 2,
+                'snow': 3,
+                'bad': 4
+            }[driver_state.weather_condition],
+            'Traffic': {
+                'low': 0,
+                'medium': 1,
+                'high': 2
+            }[driver_state.traffic_density]
         }
 
-        # Query the Bayesian network
-        result = self.inference.query(['Risk'], evidence=evidence)
-        risk_prob = result.values[1]
+        result = self.inference.query(['Fatigue'], evidence=evidence)
+        return result.values[1]  # Probability of high fatigue
 
-        # Calculate rest points loss based on risk
-        base_loss = 0.5
-        risk_multiplier = 1 + (risk_prob * 2)
-        return base_loss * risk_multiplier
 
-    def draw_graph(self, screen, x, y, width, height):
-        """Draw the rest points history graph with weather indication bars"""
+class RestRecommendationSystem:
+    def __init__(self):
+        self.driver_state = DriverState()
+        self.environment_simulator = EnvironmentSimulator()
+        self.driver_simulator = DriverSimulator()
+        self.fatigue_evaluator = FatigueEvaluator()
 
-        graph_background_color = (135, 206, 235)  # Light sky blue for day
+        self.rest_threshold = 30.0
+        self.simulation_running = False
+        self.rest_points_history = deque(maxlen=200)
+        self.paused = True
+        self.tick_count = 0
 
-        # Draw the background of the graph with the time-of-day color
-        pygame.draw.rect(screen, graph_background_color, (x, y, width, height))
+    def run_tick(self):
+        self.driver_state.weather_condition = self.environment_simulator.simulate_weather(
+            self.driver_state.weather_condition)
+        self.driver_state.traffic_density = self.environment_simulator.simulate_traffic(
+            self.driver_state.traffic_density)
 
-        # Draw the threshold line for rest points
-        threshold_y = y + height - (height * self.rest_threshold / 100)
-        pygame.draw.line(screen, (255, 0, 0), (x, threshold_y),
-                         (x + width, threshold_y), 2)
-
-        # Draw the line graph for the rest points history
-        if len(self.rest_points_history) > 1:
-            points = []
-            for i, value in enumerate(self.rest_points_history):
-                point_x = x + (i * width / self.rest_points_history.maxlen)
-                point_y = y + height - (height * value / 100)
-                points.append((point_x, point_y))
-
-            # Draw lines connecting points (rest points over time)
-            pygame.draw.lines(screen, (0, 128, 0), False, points, 2)
-
-    def simulate_sensor_data(self):
-        # Update pulse
-        self.driver_state.pulse += random.uniform(-2, 2)
-        self.driver_state.pulse = max(60, min(100, self.driver_state.pulse))
-
-        # Update eyelid movement
-        self.driver_state.eyelid_movement += random.uniform(-0.05, 0.03)
-        self.driver_state.eyelid_movement = max(
-            0.3, min(1.0, self.driver_state.eyelid_movement))
-
-        # Update speed
-        self.driver_state.current_speed += random.uniform(-5, 5)
-        self.driver_state.current_speed = max(
-            0, min(130, self.driver_state.current_speed))
+        # Update driver state
+        self.driver_state = self.driver_simulator.simulate_physiological(
+            self.driver_state)
 
         # Update time of day
-        current_hour = (self.tick_count * 5 // 60) % 24  # Simulated hour
+        current_hour = (self.tick_count * 5 // 60) % 24
         self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
 
-        # Randomly change weather with a very low probability (once per day on average)
-        if random.random() < WEATHER_CHANGE_PROB:  # ~0.35% chance per tick
-            self.driver_state.weather_condition = random.choice(
-                ["clear", "rain", "fog", "snow", "bad"])
+        # Evaluate fatigue
+        time_since_rest_hours = (
+            self.tick_count - self.driver_state.last_rest_tick) * 5 / 60
+        fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
+            self.driver_state, time_since_rest_hours)
 
-    def update_simulation(self):
-        while self.simulation_running:
-            if not self.paused:  # Only update if not paused
-                self.simulate_sensor_data()
-                self.tick_count += 1  # Increment tick count
-            time.sleep(1/SIMULATION_SPEED_TICKS_PER_SECOND)
-
-    def update_single_tick(self):
-        """Update simulation for a single tick when space is pressed"""
-        if self.paused:
-            self.tick_count += 1  # Increment tick count
-            self.simulate_sensor_data()
-            self.update_display_data()
-
-    def update_display_data(self):
-        """Update display data without running simulation"""
-        rest_loss = self.calculate_rest_points_loss()
-        base_rest_loss = 0.5  # Base rest loss
-        # The risk probability is derived from the rest_loss
-        risk_prob = rest_loss / base_rest_loss
-
-        # Update the rest points
+        rest_loss = fatigue_level * 2  # Scale fatigue to rest loss
         self.driver_state.rest_points -= rest_loss
         self.rest_points_history.append(self.driver_state.rest_points)
 
         if self.driver_state.rest_points < self.rest_threshold:
             self.driver_state.rest_points = 100
-            self.driver_state.last_rest_tick = self.tick_count  # Update last rest tick
+            self.driver_state.last_rest_tick = self.tick_count
 
-        # Add these values to the display data
-        self.display_data = {
-            'Rest Loss': rest_loss,
-            'Base Rest Loss': base_rest_loss,
-            'Risk Probability': risk_prob  # Directly showing risk probability
-        }
+        self.tick_count += 1
+
+    def update_simulation(self):
+        while self.simulation_running:
+            if not self.paused:
+                self.run_tick()
+            time.sleep(1/60)  # 60 FPS
+
+    def update_single_tick(self):
+        if self.paused:
+            self.run_tick()
 
     def toggle_simulation(self):
-        """Toggle simulation pause state"""
         self.paused = not self.paused
 
     def run(self):
@@ -259,32 +273,19 @@ class RestRecommendationSystem:
                         elif event.key == pygame.K_SPACE:  # Space key
                             self.update_single_tick()
 
-                # Only update display data if simulation is running
-                if not self.paused:
-                    self.update_display_data()
-
-                # Rendering
                 screen.fill((255, 255, 255))
 
-                # Draw rest points bar
                 pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
                 pygame.draw.rect(screen, (0, 255, 0), (50, 50,
                                                        self.driver_state.rest_points * 2, 30))
 
-                # Draw historical graph
-                self.draw_graph(screen, 300, 50, 450, 200)
-
-                # Draw text for threshold and simulation state
                 threshold_text = font.render(
                     f"Rest Threshold: {self.rest_threshold}", True, (255, 0, 0))
                 screen.blit(threshold_text, (300, 260))
 
-                # Add simulation state text
                 state_text = font.render(
                     f"Simulation {'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
                 screen.blit(state_text, (50, 100))
-
-                time_since_rest_formatted = self.calculate_time_since_rest()
 
                 # Display key information
                 texts = [
@@ -297,10 +298,6 @@ class RestRecommendationSystem:
                     f"Weather: {self.driver_state.weather_condition}",
                     f"Traffic: {self.driver_state.traffic_density}",
                     f"Road Type: {self.driver_state.road_type}",
-                    f"Time Since Last Rest: {time_since_rest_formatted}",
-                    f"Base Rest Loss: {self.display_data['Base Rest Loss']:.2f}",
-                    f"Risk Probability: {self.display_data['Risk Probability']:.2f}",
-                    f"Rest Loss: {self.display_data['Rest Loss']:.2f}"
                 ]
 
                 # Render the texts
@@ -309,7 +306,7 @@ class RestRecommendationSystem:
                     screen.blit(surface, (50, 300 + i * 40))
 
                 pygame.display.flip()
-                clock.tick(SIMULATION_SPEED_TICKS_PER_SECOND)
+                clock.tick(60)
 
         finally:
             self.simulation_running = False
