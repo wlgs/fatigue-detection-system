@@ -138,20 +138,18 @@ class RestRecommendationSystem:
         return f"{hours}h {minutes}m"
 
     def calculate_rest_points_loss(self):
-        # Calculate time since last rest in ticks
-        ticks_since_rest = self.tick_count - self.driver_state.last_rest_tick
-        minutes_since_rest = ticks_since_rest * 5  # Each tick = 5 minutes
-
-        # Define evidence for the Bayesian network
         evidence = {
-            'TimeOfDay': 1 if self.driver_state.time_of_day == "night" else 0,
-            'TimeSinceRest': 1 if minutes_since_rest > 120 else 0,  # Rest more than 2 hours ago
-            'Speed': 1 if self.driver_state.current_speed > 100 else 0,
-            'Pulse': 1 if self.driver_state.pulse > 85 else 0,
-            'EyelidMovement': 1 if self.driver_state.eyelid_movement < 0.7 else 0,
-            'Weather': 1 if self.driver_state.weather_condition == "bad" else 0,
-            'Traffic': 1 if self.driver_state.traffic_density == "high" else 0,
-            'RoadType': 1 if self.driver_state.road_type == "local" else 0
+            'TimeOfDay': 1,  # Whether it's day or night, we assume it contributes positively
+            # Assume that being rested for more than 2 hours always contributes to fatigue/risk
+            'TimeSinceRest': 1,
+            # Speed always contributes positively (e.g., speeding increases risk/fatigue)
+            'Speed': 1,
+            'Pulse': 1,  # High pulse rate always contributes to fatigue/risk
+            # Reduced eyelid movement (tiredness) always contributes to fatigue/risk
+            'EyelidMovement': 1,
+            'Weather': 1,  # Assume bad weather conditions always contribute to risk/fatigue
+            'Traffic': 1,  # Assume high traffic always contributes to risk/fatigue
+            'RoadType': 1  # Assume local roads always contribute to risk/fatigue
         }
 
         # Query the Bayesian network
@@ -164,16 +162,19 @@ class RestRecommendationSystem:
         return base_loss * risk_multiplier
 
     def draw_graph(self, screen, x, y, width, height):
-        """Draw the rest points history graph"""
-        # Draw graph background
-        pygame.draw.rect(screen, (240, 240, 240), (x, y, width, height))
+        """Draw the rest points history graph with weather indication bars"""
 
-        # Draw threshold line
+        graph_background_color = (135, 206, 235)  # Light sky blue for day
+
+        # Draw the background of the graph with the time-of-day color
+        pygame.draw.rect(screen, graph_background_color, (x, y, width, height))
+
+        # Draw the threshold line for rest points
         threshold_y = y + height - (height * self.rest_threshold / 100)
         pygame.draw.line(screen, (255, 0, 0), (x, threshold_y),
                          (x + width, threshold_y), 2)
 
-        # Draw rest points history
+        # Draw the line graph for the rest points history
         if len(self.rest_points_history) > 1:
             points = []
             for i, value in enumerate(self.rest_points_history):
@@ -181,7 +182,7 @@ class RestRecommendationSystem:
                 point_y = y + height - (height * value / 100)
                 points.append((point_x, point_y))
 
-            # Draw lines connecting points
+            # Draw lines connecting points (rest points over time)
             pygame.draw.lines(screen, (0, 128, 0), False, points, 2)
 
     def simulate_sensor_data(self):
