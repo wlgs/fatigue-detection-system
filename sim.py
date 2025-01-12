@@ -202,6 +202,29 @@ class RestRecommendationSystem:
         self.paused = True
         self.tick_count = 0
 
+    def handle_key_press(self, key):
+        if key == pygame.K_w:  # Cycle through weather
+            weather_options = list(
+                self.environment_simulator.weather_probabilities.keys())
+            current_index = weather_options.index(
+                self.driver_state.weather_condition)
+            next_index = (current_index + 1) % len(weather_options)
+            self.driver_state.weather_condition = weather_options[next_index]
+
+        elif key == pygame.K_t:  # Cycle through traffic
+            traffic_options = list(
+                self.environment_simulator.traffic_probabilities.keys())
+            current_index = traffic_options.index(
+                self.driver_state.traffic_density)
+            next_index = (current_index + 1) % len(traffic_options)
+            self.driver_state.traffic_density = traffic_options[next_index]
+
+        elif key == pygame.K_r:  # Cycle through road types
+            road_options = ["highway", "city", "rural"]
+            current_index = road_options.index(self.driver_state.road_type)
+            next_index = (current_index + 1) % len(road_options)
+            self.driver_state.road_type = road_options[next_index]
+
     def run_tick(self):
         self.driver_state.weather_condition = self.environment_simulator.simulate_weather(
             self.driver_state.weather_condition)
@@ -305,6 +328,9 @@ class RestRecommendationSystem:
                             self.toggle_simulation()
                         elif event.key == pygame.K_SPACE:  # Space key
                             self.update_single_tick()
+                        else:
+                            # Handle custom key presses
+                            self.handle_key_press(event.key)
 
                 screen.fill((255, 255, 255))
 
