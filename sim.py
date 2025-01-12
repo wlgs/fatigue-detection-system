@@ -3,7 +3,6 @@ import pandas as pd
 from pgmpy.models import BayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
-import datetime
 import random
 import time
 import pygame
@@ -224,6 +223,7 @@ class RestRecommendationSystem:
         self.simulation_running = False
         self.rest_points_history = deque(maxlen=200)  # Store last 200 points
         self.paused = True
+        self.simulators_running = True
         self.tick_count = 0
 
     def handle_key_press(self, key):
@@ -243,6 +243,12 @@ class RestRecommendationSystem:
             next_index = (current_index + 1) % len(traffic_options)
             self.driver_state.traffic_density = traffic_options[next_index]
 
+        elif key == pygame.K_d:  # Cycle through day/night
+            self.driver_state.time_of_day = "night" if self.driver_state.time_of_day == "day" else "day"
+
+        elif key == pygame.K_f:
+            self.simulators_running = not self.simulators_running
+
         elif key == pygame.K_r:  # Cycle through road types
             road_options = list(
                 self.environment_simulator.road_probabilities.keys())
@@ -251,22 +257,18 @@ class RestRecommendationSystem:
             self.driver_state.road_type = road_options[next_index]
 
     def run_tick(self):
-        self.driver_state.weather_condition = self.environment_simulator.simulate_weather(
-            self.driver_state.weather_condition)
-        self.driver_state.traffic_density = self.environment_simulator.simulate_traffic(
-            self.driver_state.traffic_density)
-        self.driver_state.road_type = self.environment_simulator.simulate_road_type(
-            self.driver_state.road_type)
+        if self.simulators_running:
+            self.driver_state.weather_condition = self.environment_simulator.simulate_weather(
+                self.driver_state.weather_condition)
+            self.driver_state.traffic_density = self.environment_simulator.simulate_traffic(
+                self.driver_state.traffic_density)
+            self.driver_state.road_type = self.environment_simulator.simulate_road_type(
+                self.driver_state.road_type)
+            self.driver_state = self.driver_simulator.simulate_physiological(
+                self.driver_state)
+            current_hour = (self.tick_count * 5 // 60) % 24
+            self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
 
-        # Update driver state
-        self.driver_state = self.driver_simulator.simulate_physiological(
-            self.driver_state)
-
-        # Update time of day
-        current_hour = (self.tick_count * 5 // 60) % 24
-        self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
-
-        # Evaluate fatigue
         time_since_rest_hours = (
             self.tick_count - self.driver_state.last_rest_tick) * 5 / 60
         fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
@@ -290,16 +292,32 @@ class RestRecommendationSystem:
         if len(self.rest_points_history) < 2:
             return
 
-        # Draw graph background
         pygame.draw.rect(screen, (240, 240, 240),
                          (start_x, start_y, width, height))
 
-        # Draw threshold line
         threshold_y = start_y + height - (height * self.rest_threshold / 100)
         pygame.draw.line(screen, (255, 0, 0), (start_x, threshold_y),
                          (start_x + width, threshold_y), 2)
 
-        # Draw grid lines
+        total_time_driven = self.tick_count * 5
+        x_tick_interval = max(1, int(total_time_driven / 10))
+        time_per_tick = 5  # Minutes per tick
+        num_ticks = len(self.rest_points_history)
+        point_spacing = width / (num_ticks - 1)
+
+        for i in range(0, num_ticks, 12):
+            x_pos = start_x + (i * point_spacing)
+            time_label = int(i * time_per_tick)  # Convert to minutes
+            label_text = f"{time_label}m" if time_label < 60 else f"{time_label // 60}h"
+            y_label_pos = start_y + height + 5
+
+            pygame.draw.line(screen, (200, 200, 200), (x_pos, start_y),
+                             (x_pos, start_y + height), 1)
+            label_surface = pygame.font.Font(
+                None, 24).render(label_text, True, (0, 0, 0))
+            screen.blit(label_surface, (x_pos - 10, y_label_pos))
+
+        # Draw Y-axis grid lines
         for i in range(0, 101, 20):
             y_pos = start_y + height - (height * i / 100)
             pygame.draw.line(screen, (200, 200, 200), (start_x, y_pos),
@@ -307,8 +325,6 @@ class RestRecommendationSystem:
 
         # Draw rest points history
         points = list(self.rest_points_history)
-        point_spacing = width / (len(points) - 1)
-
         coords = []
         for i, point in enumerate(points):
             x = start_x + (i * point_spacing)
@@ -391,10 +407,11 @@ class RestRecommendationSystem:
                     f"Speed: {self.driver_state.current_speed:.1f} km/h",
                     f"Pulse: {self.driver_state.pulse:.1f}",
                     f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
-                    f"Time of Day: {self.driver_state.time_of_day}",
-                    f"Weather: {self.driver_state.weather_condition}",
-                    f"Traffic: {self.driver_state.traffic_density}",
-                    f"Road Type: {self.driver_state.road_type}",
+                    f"[D] Time of Day: {self.driver_state.time_of_day}",
+                    f"[W] Weather: {self.driver_state.weather_condition}",
+                    f"[T] Traffic: {self.driver_state.traffic_density}",
+                    f"[R] Road Type: {self.driver_state.road_type}",
+                    f"[F] Simulators: { 'Running' if self.simulators_running else 'Paused'}",
                 ]
 
                 # Render the texts
