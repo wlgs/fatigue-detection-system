@@ -9,7 +9,7 @@ class EnvironmentSimulator:
             "rain": 0.1,
             "fog": 0.1,
             "snow": 0.1,
-            "bad": 0.2,
+            "sunny": 0.2,
         }
         self.traffic_change_prob = 1/12
         self.traffic_probabilities = {

@@ -10,12 +10,10 @@ class DriverSimulator:
         self.speed_variance = 5.0
 
     def simulate_physiological(self, driver_state):
-        # Simulate pulse changes
         driver_state.pulse += random.uniform(-self.pulse_variance,
                                              self.pulse_variance)
         driver_state.pulse = max(60, min(100, driver_state.pulse))
 
-        # Simulate eyelid movement changes
         driver_state.eyelid_movement += random.uniform(-self.eyelid_variance,
                                                        self.eyelid_variance * 0.6)
         driver_state.eyelid_movement = max(

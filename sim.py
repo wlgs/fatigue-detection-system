@@ -70,7 +70,7 @@ class RestRecommendationSystem:
         fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
             self.driver_state, time_since_rest_hours)
 
-        rest_loss = fatigue_level  # Scale fatigue to rest loss
+        rest_loss = fatigue_level * 2  # Scale fatigue to rest loss
         self.driver_state.current_rest_loss = rest_loss  # Store current rest loss
         self.driver_state.rest_points -= rest_loss
         self.rest_points_history.append(self.driver_state.rest_points)

@@ -9,7 +9,6 @@ class FatigueEvaluator:
         self.setup_bayesian_network()
 
     def setup_bayesian_network(self):
-        # Simplified network focused only on fatigue
         self.model = BayesianNetwork([
             ('TimeOfDay', 'Fatigue'),
             ('TimeSinceRest', 'Fatigue'),
@@ -21,51 +20,84 @@ class FatigueEvaluator:
         ])
 
         # Basic CPDs
-        cpd_time = TabularCPD('TimeOfDay', 2, [[0.2], [0.8]])
-        cpd_time_since_rest = TabularCPD('TimeSinceRest', 2, [[0.3], [0.7]])
-        cpd_pulse = TabularCPD('Pulse', 2, [[0.3], [0.7]])
-        cpd_eyelid = TabularCPD('EyelidMovement', 2, [[0.4], [0.6]])
+        cpd_time = TabularCPD('TimeOfDay', 2, [[0.2], [0.8]])  # Day, night
+        cpd_time_since_rest = TabularCPD(
+            'TimeSinceRest', 2, [[0.2], [0.8]])  # <2 hours, >2 hours
+        cpd_pulse = TabularCPD('Pulse', 2, [[0.3], [0.7]])  # <85, >85
+        cpd_eyelid = TabularCPD('EyelidMovement', 2, [
+                                [0.4], [0.6]])  # <0.6, >0.6
 
         # Weather impacts fatigue (5 states)
         cpd_weather = TabularCPD('Weather', 5, [
-            [0.5],  # Clear
+            [0],  # Clear
             [0.2],  # Rain
-            [0.15],  # Fog
-            [0.1],  # Snow
-            [0.05]  # Bad
+            [0.35],  # Fog
+            [0.30],  # Snow
+            [0.15]  # Sunny
         ])
 
         # Traffic impacts fatigue (3 states)
         cpd_traffic = TabularCPD('Traffic', 3, [
-            [0.4],  # Low
-            [0.4],  # Medium
-            [0.2]  # High
+            [0.1],  # Low
+            [0.3],  # Medium
+            [0.6]  # High
         ])
 
         # Road type impacts fatigue (3 states)
         cpd_road_type = TabularCPD('RoadType', 3, [
-            [0.6],  # Highway
+            [0.1],  # Highway
             [0.3],  # City
-            [0.1]   # Rural
+            [0.6]   # Rural
         ])
+
+        WEIGHTS = {
+            'time_of_day': 0.15,
+            'time_since_rest': 0.2,
+            'pulse': 0.15,
+            'eyelid': 0.15,
+            'weather': 0.1,
+            'traffic': 0.1,
+            'road': 0.1
+        }
 
         fatigue_probs = np.zeros((2, 720))
 
         for i in range(720):
-            base_prob = 0.05
+            # Get state indices for current combination
+            road_state = i % 3
+            traffic_state = (i // 3) % 3
+            weather_state = (i // 9) % 5
+            eyelid_state = (i // 45) % 2
+            pulse_state = (i // 90) % 2
+            rest_state = (i // 180) % 2
+            time_state = (i // 360) % 2
+            # Calculate contribution from each factor using CPD values
+            time_factor = float(cpd_time.get_values()[
+                                time_state]) * WEIGHTS['time_of_day']
+            rest_factor = float(cpd_time_since_rest.get_values()[
+                                rest_state]) * WEIGHTS['time_since_rest']
+            pulse_factor = float(cpd_pulse.get_values()[
+                                 pulse_state]) * WEIGHTS['pulse']
+            eyelid_factor = float(cpd_eyelid.get_values()[
+                                  eyelid_state]) * WEIGHTS['eyelid']
+            weather_factor = float(cpd_weather.get_values()[
+                                   weather_state]) * WEIGHTS['weather']
+            traffic_factor = float(cpd_traffic.get_values()[
+                                   traffic_state]) * WEIGHTS['traffic']
+            road_factor = float(cpd_road_type.get_values()[
+                                road_state]) * WEIGHTS['road']
 
-            time_of_day_factor = 0.1 if (i // 360) else 0
-            time_since_rest_factor = 0.25 if ((i // 180) % 2) else 0
-            pulse_factor = 0.1 if ((i // 90) % 2) else 0
-            eyelid_factor = 0.15 if ((i // 45) % 2) else 0
-            weather_factor = [0, 0.1, 0.25, 0.3, 0.4][(i // 15) % 5]
-            traffic_factor = [0, 0.1, 0.3][(i // 5) % 3]
-            road_type_factor = [0, 0.05, 0.2][i % 3]
+            fatigue_prob = min(1.0, (
+                time_factor +
+                rest_factor +
+                pulse_factor +
+                eyelid_factor +
+                weather_factor +
+                traffic_factor +
+                road_factor
+            ))
 
-            # Combine factors
-            fatigue_prob = min(1, base_prob + time_of_day_factor + time_since_rest_factor +
-                               pulse_factor + eyelid_factor + weather_factor + traffic_factor + road_type_factor)
-
+            # Store probabilities for both states (not fatigued, fatigued)
             fatigue_probs[0, i] = 1 - fatigue_prob
             fatigue_probs[1, i] = fatigue_prob
 
@@ -81,6 +113,9 @@ class FatigueEvaluator:
                             cpd_eyelid, cpd_weather, cpd_traffic, cpd_road_type, cpd_fatigue)
         self.inference = VariableElimination(self.model)
 
+    def get_model(self):
+        return self.model
+
     def evaluate_fatigue(self, driver_state, time_since_rest_hours):
         evidence = {
             'TimeOfDay': 1 if driver_state.time_of_day == "night" else 0,
@@ -92,7 +127,7 @@ class FatigueEvaluator:
                 'rain': 1,
                 'fog': 2,
                 'snow': 3,
-                'bad': 4
+                'sunny': 4
             }[driver_state.weather_condition],
             'Traffic': {
                 'low': 0,
@@ -107,5 +142,4 @@ class FatigueEvaluator:
         }
 
         result = self.inference.query(['Fatigue'], evidence=evidence)
-        print(result)
         return result.values[1]  # Probability of high fatigue
