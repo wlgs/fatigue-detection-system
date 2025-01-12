@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from collections import deque
 
 
+# WEATHER_CHANGE_PROB = 1 / 288  # 1 change per day on average
+WEATHER_CHANGE_PROB = 1 / 36  # 1 change per day on average
+SIMULATION_SPEED_TICKS_PER_SECOND = 60
+
+
 @dataclass
 class DriverState:
     rest_points: float = 100.0
@@ -81,14 +86,37 @@ class RestRecommendationSystem:
             evidence_card=[2, 2, 2, 2]
         )
 
+        # Introducing weights for different factors
+        weights = {
+            'Weather': 1000,   # Weather has the highest weight
+            'Traffic': 2,   # Traffic has a medium weight
+            'RoadType': 1   # RoadType has the lowest weight
+        }
+
+        # Updated Risk CPD with weights influencing risk probabilities
         # 2 for Risk states, 80 for the combinations of the evidence states
-        #  2 x (2 x 2 x 5 x 2 x 2)
         risk_probs = np.zeros((2, 80))
+
         for i in range(80):
-            # Adjust based on evidence state combinations
-            risk_probs[0, i] = 0.9 - (i * 0.02)
+            # Generate risk probabilities based on evidence states
+            # base risk based on combinations of evidence
+            base_risk = 0.9 - (i * 0.02)
+
+            # Adjust risk probability based on weighted factors
+            weather_factor = weights['Weather'] * (i % 5)  # Weight for Weather
+            traffic_factor = weights['Traffic'] * \
+                ((i // 5) % 2)  # Weight for Traffic
+            road_factor = weights['RoadType'] * \
+                ((i // 10) % 2)  # Weight for RoadType
+
+            # Influence the risk based on these weighted factors
+            risk_factor = base_risk + weather_factor + traffic_factor + road_factor
+            # Ensure probability is between 0 and 1
+            risk_probs[0, i] = max(0, min(1, risk_factor))
+            # Complementary risk for high risk state
             risk_probs[1, i] = 1 - risk_probs[0, i]
 
+        # Add the updated CPDs to the model
         cpd_risk = TabularCPD(
             'Risk', 2,
             risk_probs,
@@ -176,7 +204,7 @@ class RestRecommendationSystem:
         self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
 
         # Randomly change weather with a very low probability (once per day on average)
-        if random.random() < 1 / 288:  # ~0.35% chance per tick
+        if random.random() < WEATHER_CHANGE_PROB:  # ~0.35% chance per tick
             self.driver_state.weather_condition = random.choice(
                 ["clear", "rain", "fog", "snow", "bad"])
 
@@ -185,7 +213,7 @@ class RestRecommendationSystem:
             if not self.paused:  # Only update if not paused
                 self.simulate_sensor_data()
                 self.tick_count += 1  # Increment tick count
-            time.sleep(1/15)
+            time.sleep(1/SIMULATION_SPEED_TICKS_PER_SECOND)
 
     def update_single_tick(self):
         """Update simulation for a single tick when space is pressed"""
@@ -278,7 +306,7 @@ class RestRecommendationSystem:
                     screen.blit(surface, (50, 300 + i * 40))
 
                 pygame.display.flip()
-                clock.tick(15)
+                clock.tick(SIMULATION_SPEED_TICKS_PER_SECOND)
 
         finally:
             self.simulation_running = False
