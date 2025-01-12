@@ -41,6 +41,11 @@ class RestRecommendationSystem:
         self.rest_points_history = deque(maxlen=200)  # Store last 200 points
         self.paused = True  # New state to track if simulation is paused
         self.tick_count = 0  # Simulation tick counter
+        self.display_data = {
+            'Rest Loss': 0,
+            'Base Rest Loss': 0,
+            'Risk Probability': 0
+        }  # Display data dictionary
 
     def setup_bayesian_network(self):
         self.model = BayesianNetwork([
@@ -86,35 +91,16 @@ class RestRecommendationSystem:
             evidence_card=[2, 2, 2, 2]
         )
 
-        # Introducing weights for different factors
-        weights = {
-            'Weather': 1000,   # Weather has the highest weight
-            'Traffic': 2,   # Traffic has a medium weight
-            'RoadType': 1   # RoadType has the lowest weight
-        }
-
-        # Updated Risk CPD with weights influencing risk probabilities
-        # 2 for Risk states, 80 for the combinations of the evidence states
         risk_probs = np.zeros((2, 80))
 
         for i in range(80):
-            # Generate risk probabilities based on evidence states
-            # base risk based on combinations of evidence
-            base_risk = 0.9 - (i * 0.02)
+            base_risk = 0.7 - (i * 0.01)  # Slightly lower base risk
 
-            # Adjust risk probability based on weighted factors
-            weather_factor = weights['Weather'] * (i % 5)  # Weight for Weather
-            traffic_factor = weights['Traffic'] * \
-                ((i // 5) % 2)  # Weight for Traffic
-            road_factor = weights['RoadType'] * \
-                ((i // 10) % 2)  # Weight for RoadType
+            risk_factor = base_risk
+            risk_probs[0, i] = max(0, min(1, risk_factor))  # Lower risk state
+            risk_probs[1, i] = 1 - risk_probs[0, i]  # Higher risk state
 
-            # Influence the risk based on these weighted factors
-            risk_factor = base_risk + weather_factor + traffic_factor + road_factor
-            # Ensure probability is between 0 and 1
-            risk_probs[0, i] = max(0, min(1, risk_factor))
-            # Complementary risk for high risk state
-            risk_probs[1, i] = 1 - risk_probs[0, i]
+        print(risk_probs)
 
         # Add the updated CPDs to the model
         cpd_risk = TabularCPD(
@@ -226,12 +212,24 @@ class RestRecommendationSystem:
     def update_display_data(self):
         """Update display data without running simulation"""
         rest_loss = self.calculate_rest_points_loss()
+        base_rest_loss = 0.5  # Base rest loss
+        # The risk probability is derived from the rest_loss
+        risk_prob = rest_loss / base_rest_loss
+
+        # Update the rest points
         self.driver_state.rest_points -= rest_loss
         self.rest_points_history.append(self.driver_state.rest_points)
 
         if self.driver_state.rest_points < self.rest_threshold:
             self.driver_state.rest_points = 100
             self.driver_state.last_rest_tick = self.tick_count  # Update last rest tick
+
+        # Add these values to the display data
+        self.display_data = {
+            'Rest Loss': rest_loss,
+            'Base Rest Loss': base_rest_loss,
+            'Risk Probability': risk_prob  # Directly showing risk probability
+        }
 
     def toggle_simulation(self):
         """Toggle simulation pause state"""
@@ -300,8 +298,12 @@ class RestRecommendationSystem:
                     f"Traffic: {self.driver_state.traffic_density}",
                     f"Road Type: {self.driver_state.road_type}",
                     f"Time Since Last Rest: {time_since_rest_formatted}",
+                    f"Base Rest Loss: {self.display_data['Base Rest Loss']:.2f}",
+                    f"Risk Probability: {self.display_data['Risk Probability']:.2f}",
+                    f"Rest Loss: {self.display_data['Rest Loss']:.2f}"
                 ]
 
+                # Render the texts
                 for i, text in enumerate(texts):
                     surface = font.render(text, True, (0, 0, 0))
                     screen.blit(surface, (50, 300 + i * 40))
