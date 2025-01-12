@@ -202,7 +202,7 @@ class RestRecommendationSystem:
 
         self.rest_threshold = 30.0
         self.simulation_running = False
-        self.rest_points_history = deque(maxlen=200)
+        self.rest_points_history = deque(maxlen=200)  # Store last 200 points
         self.paused = True
         self.tick_count = 0
 
@@ -235,6 +235,39 @@ class RestRecommendationSystem:
             self.driver_state.last_rest_tick = self.tick_count
 
         self.tick_count += 1
+
+    def draw_graph(self, screen, start_x, start_y, width, height):
+        if len(self.rest_points_history) < 2:
+            return
+
+        # Draw graph background
+        pygame.draw.rect(screen, (240, 240, 240),
+                         (start_x, start_y, width, height))
+
+        # Draw threshold line
+        threshold_y = start_y + height - (height * self.rest_threshold / 100)
+        pygame.draw.line(screen, (255, 0, 0), (start_x, threshold_y),
+                         (start_x + width, threshold_y), 2)
+
+        # Draw grid lines
+        for i in range(0, 101, 20):
+            y_pos = start_y + height - (height * i / 100)
+            pygame.draw.line(screen, (200, 200, 200), (start_x, y_pos),
+                             (start_x + width, y_pos), 1)
+
+        # Draw rest points history
+        points = list(self.rest_points_history)
+        point_spacing = width / (len(points) - 1)
+
+        coords = []
+        for i, point in enumerate(points):
+            x = start_x + (i * point_spacing)
+            y = start_y + height - (height * point / 100)
+            coords.append((x, y))
+
+        # Draw line graph
+        if len(coords) >= 2:
+            pygame.draw.lines(screen, (0, 128, 0), False, coords, 2)
 
     def update_simulation(self):
         while self.simulation_running:
@@ -275,9 +308,13 @@ class RestRecommendationSystem:
 
                 screen.fill((255, 255, 255))
 
+                # Draw rest points bar
                 pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
                 pygame.draw.rect(screen, (0, 255, 0), (50, 50,
                                                        self.driver_state.rest_points * 2, 30))
+
+                # Draw rest points graph
+                self.draw_graph(screen, 300, 50, 850, 200)
 
                 threshold_text = font.render(
                     f"Rest Threshold: {self.rest_threshold}", True, (255, 0, 0))
