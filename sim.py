@@ -15,7 +15,7 @@ from collections import deque
 @dataclass
 class DriverState:
     rest_points: float = 100.0
-    last_rest_time: datetime.datetime = datetime.datetime.now()
+    last_rest_tick: int = 0  # Track the tick when the last rest occurred
     current_speed: float = 0.0
     pulse: float = 70.0
     eyelid_movement: float = 1.0
@@ -35,6 +35,7 @@ class RestRecommendationSystem:
         self.simulation_thread = None
         self.rest_points_history = deque(maxlen=200)  # Store last 200 points
         self.paused = True  # New state to track if simulation is paused
+        self.tick_count = 0  # Simulation tick counter
 
     def setup_bayesian_network(self):
         # [Previous Bayesian Network setup code remains exactly the same]
@@ -90,10 +91,22 @@ class RestRecommendationSystem:
 
         self.inference = VariableElimination(self.model)
 
+    def calculate_time_since_rest(self):
+        ticks_since_rest = self.tick_count - self.driver_state.last_rest_tick
+        total_minutes = ticks_since_rest * 5  # Each tick = 5 minutes
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        return f"{hours}h {minutes}m"
+
     def calculate_rest_points_loss(self):
+        # Calculate time since last rest in ticks
+        ticks_since_rest = self.tick_count - self.driver_state.last_rest_tick
+        minutes_since_rest = ticks_since_rest * 5  # Each tick = 5 minutes
+
+        # Define evidence for the Bayesian network
         evidence = {
             'TimeOfDay': 1 if self.driver_state.time_of_day == "night" else 0,
-            'TimeSinceRest': 1 if (datetime.datetime.now() - self.driver_state.last_rest_time).seconds > 7200 else 0,
+            'TimeSinceRest': 1 if minutes_since_rest > 120 else 0,  # Rest more than 2 hours ago
             'Speed': 1 if self.driver_state.current_speed > 100 else 0,
             'Pulse': 1 if self.driver_state.pulse > 85 else 0,
             'EyelidMovement': 1 if self.driver_state.eyelid_movement < 0.7 else 0,
@@ -102,9 +115,11 @@ class RestRecommendationSystem:
             'RoadType': 1 if self.driver_state.road_type == "local" else 0
         }
 
+        # Query the Bayesian network
         result = self.inference.query(['Risk'], evidence=evidence)
         risk_prob = result.values[1]
 
+        # Calculate rest points loss based on risk
         base_loss = 0.5
         risk_multiplier = 1 + (risk_prob * 2)
         return base_loss * risk_multiplier
@@ -131,29 +146,40 @@ class RestRecommendationSystem:
             pygame.draw.lines(screen, (0, 128, 0), False, points, 2)
 
     def simulate_sensor_data(self):
+        # Update pulse
         self.driver_state.pulse += random.uniform(-2, 2)
         self.driver_state.pulse = max(60, min(100, self.driver_state.pulse))
 
+        # Update eyelid movement
         self.driver_state.eyelid_movement += random.uniform(-0.05, 0.03)
         self.driver_state.eyelid_movement = max(
             0.3, min(1.0, self.driver_state.eyelid_movement))
 
+        # Update speed
         self.driver_state.current_speed += random.uniform(-5, 5)
         self.driver_state.current_speed = max(
             0, min(130, self.driver_state.current_speed))
 
-        current_hour = datetime.datetime.now().hour
+        # Update time of day
+        current_hour = (self.tick_count * 5 // 60) % 24  # Simulated hour
         self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
+
+        # Randomly change weather with a very low probability (once per day on average)
+        if random.random() < 1 / 288:  # ~0.35% chance per tick
+            self.driver_state.weather_condition = random.choice(
+                ["clear", "rain", "fog", "snow", "bad"])
 
     def update_simulation(self):
         while self.simulation_running:
             if not self.paused:  # Only update if not paused
                 self.simulate_sensor_data()
-            time.sleep(1/60)
+                self.tick_count += 1  # Increment tick count
+            time.sleep(1/15)
 
     def update_single_tick(self):
         """Update simulation for a single tick when space is pressed"""
         if self.paused:
+            self.tick_count += 1  # Increment tick count
             self.simulate_sensor_data()
             self.update_display_data()
 
@@ -165,7 +191,7 @@ class RestRecommendationSystem:
 
         if self.driver_state.rest_points < self.rest_threshold:
             self.driver_state.rest_points = 100
-            self.driver_state.last_rest_time = datetime.datetime.now()
+            self.driver_state.last_rest_tick = self.tick_count  # Update last rest tick
 
     def toggle_simulation(self):
         """Toggle simulation pause state"""
@@ -220,12 +246,11 @@ class RestRecommendationSystem:
                     f"Simulation {'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
                 screen.blit(state_text, (50, 100))
 
-                # Calculate time since last rest
-                time_since_rest = datetime.datetime.now() - self.driver_state.last_rest_time
-                time_since_rest_formatted = f"{time_since_rest.seconds // 3600}h {time_since_rest.seconds % 3600 // 60}m"
+                time_since_rest_formatted = self.calculate_time_since_rest()
 
                 # Display key information
                 texts = [
+                    f"Tick: {self.tick_count}",
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
                     f"Speed: {self.driver_state.current_speed:.1f} km/h",
                     f"Pulse: {self.driver_state.pulse:.1f}",
@@ -242,7 +267,7 @@ class RestRecommendationSystem:
                     screen.blit(surface, (50, 300 + i * 40))
 
                 pygame.display.flip()
-                clock.tick(60)
+                clock.tick(15)
 
         finally:
             self.simulation_running = False
