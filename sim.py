@@ -24,6 +24,7 @@ class DriverState:
     traffic_density: str = "low"
     time_of_day: str = "day"
     road_type: str = "highway"
+    current_rest_loss: float = 0.0  # Added to track current rest loss
 
 
 class EnvironmentSimulator:
@@ -130,10 +131,6 @@ class FatigueEvaluator:
             [0.2]  # High
         ])
 
-        # Fatigue CPD with environmental factors
-        # Creating probability matrix for fatigue based on all factors
-        # Shape: [2, 2*2*2*2*5*3] for all combinations of input states
-        # 2 * 2 * 2 * 2 * 5 * 3 = 240 combinations
         fatigue_probs = np.zeros((2, 240))
 
         # Fill probability matrix - this is a simplified version
@@ -227,6 +224,7 @@ class RestRecommendationSystem:
             self.driver_state, time_since_rest_hours)
 
         rest_loss = fatigue_level * 2  # Scale fatigue to rest loss
+        self.driver_state.current_rest_loss = rest_loss  # Store current rest loss
         self.driver_state.rest_points -= rest_loss
         self.rest_points_history.append(self.driver_state.rest_points)
 
@@ -308,26 +306,33 @@ class RestRecommendationSystem:
 
                 screen.fill((255, 255, 255))
 
-                # Draw rest points bar
-                pygame.draw.rect(screen, (200, 200, 200), (50, 50, 200, 30))
-                pygame.draw.rect(screen, (0, 255, 0), (50, 50,
+                # Draw graph first
+                self.draw_graph(screen, 50, 50, 1100, 200)
+
+                # Draw rest points bar and related information
+                bar_y = 300
+                pygame.draw.rect(screen, (200, 200, 200), (50, bar_y, 200, 30))
+                pygame.draw.rect(screen, (0, 255, 0), (50, bar_y,
                                                        self.driver_state.rest_points * 2, 30))
 
-                # Draw rest points graph
-                self.draw_graph(screen, 300, 50, 850, 200)
+                # Display rest-related information
+                rest_info_texts = [
+                    f"Rest Points: {self.driver_state.rest_points:.1f}",
+                    f"Current Rest Loss: {self.driver_state.current_rest_loss:.3f}/tick",
+                    f"Rest Threshold: {self.rest_threshold}",
+                ]
 
-                threshold_text = font.render(
-                    f"Rest Threshold: {self.rest_threshold}", True, (255, 0, 0))
-                screen.blit(threshold_text, (300, 260))
+                for i, text in enumerate(rest_info_texts):
+                    surface = font.render(text, True, (0, 0, 0))
+                    screen.blit(surface, (270, bar_y + i * 30))
 
                 state_text = font.render(
                     f"Simulation {'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
-                screen.blit(state_text, (50, 100))
+                screen.blit(state_text, (50, bar_y + 100))
 
-                # Display key information
+                # Display other information
                 texts = [
                     f"Tick: {self.tick_count}",
-                    f"Rest Points: {self.driver_state.rest_points:.1f}",
                     f"Speed: {self.driver_state.current_speed:.1f} km/h",
                     f"Pulse: {self.driver_state.pulse:.1f}",
                     f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
@@ -340,7 +345,7 @@ class RestRecommendationSystem:
                 # Render the texts
                 for i, text in enumerate(texts):
                     surface = font.render(text, True, (0, 0, 0))
-                    screen.blit(surface, (50, 300 + i * 40))
+                    screen.blit(surface, (50, bar_y + 150 + i * 40))
 
                 pygame.display.flip()
                 clock.tick(60)
