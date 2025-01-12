@@ -28,8 +28,6 @@ class DriverState:
 
 
 class EnvironmentSimulator:
-    """Handles simple probability-based simulation of environmental factors"""
-
     def __init__(self):
         self.weather_change_prob = 1/36
         self.weather_probabilities = {
@@ -45,6 +43,12 @@ class EnvironmentSimulator:
             "medium": 0.4,
             "high": 0.2
         }
+        self.road_change_prob = 1/12
+        self.road_probabilities = {
+            "highway": 0.6,
+            "city": 0.3,
+            "rural": 0.1
+        }
 
     def simulate_weather(self, current_weather):
         if random.random() < self.weather_change_prob:
@@ -53,6 +57,14 @@ class EnvironmentSimulator:
                 list(self.weather_probabilities.values())
             )[0]
         return current_weather
+
+    def simulate_road_type(self, current_road_type):
+        if random.random() < self.road_change_prob:
+            return random.choices(
+                list(self.road_probabilities.keys()),
+                list(self.road_probabilities.values())
+            )[0]
+        return current_road_type
 
     def simulate_traffic(self, current_traffic):
         if random.random() < self.traffic_change_prob:
@@ -96,8 +108,6 @@ class DriverSimulator:
 
 
 class FatigueEvaluator:
-    """Uses Bayesian Network for fatigue evaluation"""
-
     def __init__(self):
         self.setup_bayesian_network()
 
@@ -109,7 +119,8 @@ class FatigueEvaluator:
             ('Pulse', 'Fatigue'),
             ('EyelidMovement', 'Fatigue'),
             ('Weather', 'Fatigue'),
-            ('Traffic', 'Fatigue')
+            ('Traffic', 'Fatigue'),
+            ('RoadType', 'Fatigue')
         ])
 
         # Basic CPDs
@@ -134,21 +145,29 @@ class FatigueEvaluator:
             [0.2]  # High
         ])
 
-        fatigue_probs = np.zeros((2, 240))
+        # Road type impacts fatigue (3 states)
+        cpd_road_type = TabularCPD('RoadType', 3, [
+            [0.6],  # Highway
+            [0.3],  # City
+            [0.1]   # Rural
+        ])
 
-        for i in range(240):
+        fatigue_probs = np.zeros((2, 720))
+
+        for i in range(720):
             base_prob = 0.05
 
-            time_of_day_factor = 0.1 if (i // 120) else 0
-            time_since_rest_factor = 0.25 if ((i // 60) % 2) else 0
-            pulse_factor = 0.1 if ((i // 30) % 2) else 0
-            eyelid_factor = 0.15 if ((i // 15) % 2) else 0
-            weather_factor = [0, 0.1, 0.2, 0.2, 0.4][(i // 3) % 5]
-            traffic_factor = [0, 0.1, 0.3][i % 3]
+            time_of_day_factor = 0.1 if (i // 360) else 0
+            time_since_rest_factor = 0.25 if ((i // 180) % 2) else 0
+            pulse_factor = 0.1 if ((i // 90) % 2) else 0
+            eyelid_factor = 0.15 if ((i // 45) % 2) else 0
+            weather_factor = [0, 0.1, 0.25, 0.3, 0.4][(i // 15) % 5]
+            traffic_factor = [0, 0.1, 0.3][(i // 5) % 3]
+            road_type_factor = [0, 0.05, 0.2][i % 3]
 
             # Combine factors
             fatigue_prob = min(1, base_prob + time_of_day_factor + time_since_rest_factor +
-                               pulse_factor + eyelid_factor + weather_factor + traffic_factor)
+                               pulse_factor + eyelid_factor + weather_factor + traffic_factor + road_type_factor)
 
             fatigue_probs[0, i] = 1 - fatigue_prob
             fatigue_probs[1, i] = fatigue_prob
@@ -157,12 +176,12 @@ class FatigueEvaluator:
             'Fatigue', 2,
             fatigue_probs,
             evidence=['TimeOfDay', 'TimeSinceRest', 'Pulse',
-                      'EyelidMovement', 'Weather', 'Traffic'],
-            evidence_card=[2, 2, 2, 2, 5, 3]
+                      'EyelidMovement', 'Weather', 'Traffic', 'RoadType'],
+            evidence_card=[2, 2, 2, 2, 5, 3, 3]
         )
 
         self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_pulse,
-                            cpd_eyelid, cpd_weather, cpd_traffic, cpd_fatigue)
+                            cpd_eyelid, cpd_weather, cpd_traffic, cpd_road_type, cpd_fatigue)
         self.inference = VariableElimination(self.model)
 
     def evaluate_fatigue(self, driver_state, time_since_rest_hours):
@@ -182,7 +201,12 @@ class FatigueEvaluator:
                 'low': 0,
                 'medium': 1,
                 'high': 2
-            }[driver_state.traffic_density]
+            }[driver_state.traffic_density],
+            'RoadType': {
+                'highway': 0,
+                'city': 1,
+                'rural': 2
+            }[driver_state.road_type]
         }
 
         result = self.inference.query(['Fatigue'], evidence=evidence)
@@ -220,7 +244,8 @@ class RestRecommendationSystem:
             self.driver_state.traffic_density = traffic_options[next_index]
 
         elif key == pygame.K_r:  # Cycle through road types
-            road_options = ["highway", "city", "rural"]
+            road_options = list(
+                self.environment_simulator.road_probabilities.keys())
             current_index = road_options.index(self.driver_state.road_type)
             next_index = (current_index + 1) % len(road_options)
             self.driver_state.road_type = road_options[next_index]
@@ -230,6 +255,8 @@ class RestRecommendationSystem:
             self.driver_state.weather_condition)
         self.driver_state.traffic_density = self.environment_simulator.simulate_traffic(
             self.driver_state.traffic_density)
+        self.driver_state.road_type = self.environment_simulator.simulate_road_type(
+            self.driver_state.road_type)
 
         # Update driver state
         self.driver_state = self.driver_simulator.simulate_physiological(
@@ -245,7 +272,7 @@ class RestRecommendationSystem:
         fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
             self.driver_state, time_since_rest_hours)
 
-        rest_loss = fatigue_level * 2  # Scale fatigue to rest loss
+        rest_loss = fatigue_level  # Scale fatigue to rest loss
         self.driver_state.current_rest_loss = rest_loss  # Store current rest loss
         self.driver_state.rest_points -= rest_loss
         self.rest_points_history.append(self.driver_state.rest_points)
