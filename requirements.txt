@@ -1,0 +1,6 @@
+# Please use python 3.11.11
+# do not know if line below is legal
+# python==3.11.11
+numpy==2.2.1
+pgmpy==0.1.26
+pygame==2.6.1
