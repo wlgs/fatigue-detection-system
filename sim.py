@@ -80,6 +80,8 @@ class RestRecommendationSystem:
             self.driver_state.pulse = 70.0
             self.driver_state.eyelid_movement = 1.0
             self.driver_state.current_speed = 0.0
+            self.driver_state.last_drive_tick_time = self.tick_count - \
+                self.driver_state.last_rest_tick
             self.driver_state.last_rest_tick = self.tick_count
 
         self.tick_count += 1
@@ -187,6 +189,7 @@ class RestRecommendationSystem:
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
                     f"Current Rest Loss: {self.driver_state.current_rest_loss:.3f}/tick",
                     f"Rest Threshold: {self.rest_threshold}",
+                    f"Last drive time: {self.driver_state.last_drive_tick_time*5//60}h {self.driver_state.last_drive_tick_time*5%60}m",
                 ]
 
                 for i, text in enumerate(rest_info_texts):
@@ -194,7 +197,7 @@ class RestRecommendationSystem:
                     screen.blit(surface, (270, bar_y + i * 30))
 
                 state_text = font.render(
-                    f"Simulation {'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
+                    f"{'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
                 screen.blit(state_text, (50, bar_y + 100))
 
                 # Display other information

@@ -14,3 +14,4 @@ class DriverState:
     time_of_day: str = "day"
     road_type: str = "highway"
     current_rest_loss: float = 0.0
+    last_drive_tick_time: int = 0
