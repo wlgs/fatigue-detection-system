@@ -1,17 +1,40 @@
+from pgmpy.models import BayesianNetwork
+from pgmpy.factors.discrete import TabularCPD
+from pgmpy.inference import VariableElimination
+import numpy as np
+
+
 class BiometricFatigueDetector:
-    """Detects driver fatigue based on biometric measurements"""
+    """Detects driver fatigue based on biometric measurements using Bayesian networks"""
 
     def __init__(self):
-        # Thresholds for fatigue detection
-        self.THRESHOLD_HR_LOW = 60  # bpm
-        self.THRESHOLD_HRV_LOW = 30  # ms
-        self.THRESHOLD_EDA_LOW = 3.0  # μS
-        self.THRESHOLD_PERCLOS_HIGH = 0.40  # percentage
-        self.THRESHOLD_BLINK_DURATION_HIGH = 500  # ms
-        self.THRESHOLD_BLINK_RATE_HIGH = 25  # blinks per minute
+        self.setup_bayesian_network()
+        self.ALARM_THRESHOLD = 0.7  # Threshold for triggering fatigue alarm
 
-        # Weights for different measurements
-        self.weights = {
+    def setup_bayesian_network(self):
+        self.model = BayesianNetwork([
+            ('HeartRate', 'Fatigue'),
+            ('HRV', 'Fatigue'),
+            ('EDA', 'Fatigue'),
+            ('PERCLOS', 'Fatigue'),
+            ('BlinkDuration', 'Fatigue'),
+            ('BlinkRate', 'Fatigue'),
+            ('Fatigue', 'Alarm')
+        ])
+
+        # CPDs for biometric measurements
+        cpd_heart_rate = TabularCPD(
+            'HeartRate', 2, [[0.7], [0.3]])  # Normal, Low
+        cpd_hrv = TabularCPD('HRV', 2, [[0.7], [0.3]])  # Normal, Low
+        cpd_eda = TabularCPD('EDA', 2, [[0.7], [0.3]])  # Normal, Low
+        cpd_perclos = TabularCPD('PERCLOS', 2, [[0.6], [0.4]])  # Normal, High
+        cpd_blink_duration = TabularCPD(
+            'BlinkDuration', 2, [[0.6], [0.4]])  # Normal, High
+        cpd_blink_rate = TabularCPD(
+            'BlinkRate', 2, [[0.6], [0.4]])  # Normal, High
+
+        # Weights for biometric factors
+        WEIGHTS = {
             'heart_rate': 0.15,
             'hrv': 0.20,
             'eda': 0.15,
@@ -20,58 +43,79 @@ class BiometricFatigueDetector:
             'blink_rate': 0.15
         }
 
-    def _calculate_hr_fatigue(self, hr):
-        """Heart rate fatigue score (higher score = more fatigue)"""
-        if hr > self.THRESHOLD_HR_LOW:
-            return 0.0
-        return min(1.0, (self.THRESHOLD_HR_LOW - hr) / 15)
+        # Calculate fatigue probabilities
+        fatigue_probs = self._calculate_fatigue_probabilities(
+            [cpd_heart_rate, cpd_hrv, cpd_eda, cpd_perclos,
+                cpd_blink_duration, cpd_blink_rate],
+            WEIGHTS
+        )
 
-    def _calculate_hrv_fatigue(self, hrv):
-        """HRV fatigue score"""
-        if hrv > self.THRESHOLD_HRV_LOW:
-            return 0.0
-        return min(1.0, (self.THRESHOLD_HRV_LOW - hrv) / 15)
+        cpd_fatigue = TabularCPD(
+            'Fatigue', 2,
+            fatigue_probs,
+            evidence=['HeartRate', 'HRV', 'EDA',
+                      'PERCLOS', 'BlinkDuration', 'BlinkRate'],
+            evidence_card=[2, 2, 2, 2, 2, 2]
+        )
 
-    def _calculate_eda_fatigue(self, eda):
-        """EDA fatigue score"""
-        if eda > self.THRESHOLD_EDA_LOW:
-            return 0.0
-        return min(1.0, (self.THRESHOLD_EDA_LOW - eda) / 2)
+        # Alarm CPD based on fatigue level
+        cpd_alarm = TabularCPD(
+            'Alarm', 2,
+            [[0.9, 0.1],   # No alarm probabilities when not fatigued/fatigued
+             [0.1, 0.9]],  # Alarm probabilities when not fatigued/fatigued
+            evidence=['Fatigue'],
+            evidence_card=[2]
+        )
 
-    def _calculate_perclos_fatigue(self, perclos):
-        """PERCLOS fatigue score"""
-        if perclos < self.THRESHOLD_PERCLOS_HIGH:
-            return 0.0
-        return min(1.0, (perclos - self.THRESHOLD_PERCLOS_HIGH) / 0.2)
+        self.model.add_cpds(cpd_heart_rate, cpd_hrv, cpd_eda, cpd_perclos,
+                            cpd_blink_duration, cpd_blink_rate, cpd_fatigue, cpd_alarm)
+        self.inference = VariableElimination(self.model)
 
-    def _calculate_blink_duration_fatigue(self, duration):
-        """Blink duration fatigue score"""
-        if duration < self.THRESHOLD_BLINK_DURATION_HIGH:
-            return 0.0
-        return min(1.0, (duration - self.THRESHOLD_BLINK_DURATION_HIGH) / 300)
+    def _calculate_fatigue_probabilities(self, cpds, weights):
+        """Calculate fatigue probabilities based on input CPDs and weights"""
+        num_combinations = 2 ** len(cpds)
+        probs = np.zeros((2, num_combinations))
 
-    def _calculate_blink_rate_fatigue(self, rate):
-        """Blink rate fatigue score"""
-        if rate < self.THRESHOLD_BLINK_RATE_HIGH:
-            return 0.0
-        return min(1.0, (rate - self.THRESHOLD_BLINK_RATE_HIGH) / 10)
+        for i in range(num_combinations):
+            # Convert i to binary array representing states
+            states = [(i >> j) & 1 for j in range(len(cpds))]
+
+            # Calculate weighted sum of probabilities
+            fatigue_prob = sum(
+                float(cpd.get_values()[state]) * weight
+                for cpd, state, (_, weight) in zip(cpds, states, weights.items())
+            )
+
+            fatigue_prob = min(1.0, fatigue_prob)
+            probs[0, i] = 1 - fatigue_prob  # Not fatigued
+            probs[1, i] = fatigue_prob      # Fatigued
+
+        return probs
+
+    def _get_biometric_states(self, driver_state):
+        """Convert biometric measurements to binary states"""
+        return {
+            'HeartRate': 1 if driver_state.heart_rate < 60 else 0,
+            'HRV': 1 if driver_state.hrv < 30 else 0,
+            'EDA': 1 if driver_state.eda < 3.0 else 0,
+            'PERCLOS': 1 if driver_state.perclos > 0.4 else 0,
+            'BlinkDuration': 1 if driver_state.blink_duration > 500 else 0,
+            'BlinkRate': 1 if driver_state.blink_rate > 25 else 0
+        }
 
     def detect_fatigue(self, driver_state):
         """
-        Evaluates driver fatigue based on biometric measurements
-        Returns: fatigue_level (0.0-1.0), where >0.7 indicates severe fatigue
+        Evaluates driver fatigue using Bayesian network
+        Returns: (fatigue_level, alarm_triggered)
         """
-        fatigue_scores = {
-            'heart_rate': self._calculate_hr_fatigue(driver_state.heart_rate),
-            'hrv': self._calculate_hrv_fatigue(driver_state.hrv),
-            'eda': self._calculate_eda_fatigue(driver_state.eda),
-            'perclos': self._calculate_perclos_fatigue(driver_state.perclos),
-            'blink_duration': self._calculate_blink_duration_fatigue(driver_state.blink_duration),
-            'blink_rate': self._calculate_blink_rate_fatigue(driver_state.blink_rate)
-        }
+        evidence = self._get_biometric_states(driver_state)
 
-        # Calculate weighted average fatigue level
-        total_fatigue = sum(score * self.weights[metric]
-                            for metric, score in fatigue_scores.items())
+        # Query fatigue probability
+        fatigue_result = self.inference.query(['Fatigue'], evidence=evidence)
+        fatigue_level = fatigue_result.values[1]
 
-        return total_fatigue
+        # Query alarm probability
+        alarm_result = self.inference.query(['Alarm'], evidence=evidence)
+        alarm_probability = alarm_result.values[1]
+
+        return fatigue_level, alarm_probability, alarm_probability > self.ALARM_THRESHOLD

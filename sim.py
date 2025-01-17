@@ -6,6 +6,7 @@ from modules.DriverState import DriverState
 from modules.EnvironmentSimulator import EnvironmentSimulator
 from modules.DriverSimulator import DriverSimulator
 from modules.FatigueEvaluator import FatigueEvaluator
+from modules.BiometricFatigueDetector import BiometricFatigueDetector
 
 
 class RestRecommendationSystem:
@@ -14,13 +15,16 @@ class RestRecommendationSystem:
         self.environment_simulator = EnvironmentSimulator()
         self.driver_simulator = DriverSimulator()
         self.fatigue_evaluator = FatigueEvaluator()
-
+        self.biometric_detector = BiometricFatigueDetector()
+        self.alarm_probability = 0.0
         self.rest_threshold = 30.0
         self.simulation_running = False
         self.rest_points_history = deque(maxlen=200)  # Store last 200 points
+        self.alarm_history = deque(maxlen=200)  # Store alarm states
         self.paused = True
         self.simulators_running = True
         self.tick_count = 0
+        self.current_alarm_state = False
 
     def handle_key_press(self, key):
         if key == pygame.K_w:  # Cycle through weather
@@ -57,6 +61,8 @@ class RestRecommendationSystem:
             self.tick_count - self.driver_state.last_rest_tick) * 5 / 60
         fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
             self.driver_state, time_since_rest_hours)
+        self.driver_simulator.simulate_physiological(
+            self.driver_state, fatigue_level)
         if self.simulators_running:
             self.driver_state.weather_condition = self.environment_simulator.simulate_weather(
                 self.driver_state.weather_condition)
@@ -64,15 +70,25 @@ class RestRecommendationSystem:
                 self.driver_state.traffic_density)
             self.driver_state.road_type = self.environment_simulator.simulate_road_type(
                 self.driver_state.road_type)
-            self.driver_state = self.driver_simulator.simulate_physiological(
-                self.driver_state, fatigue_level)
-            current_hour = (self.tick_count * 5 // 60) % 24
-            self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
+            time_since_rest_hours = (
+                self.tick_count - self.driver_state.last_rest_tick) * 5 / 60
+        fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
+            self.driver_state, time_since_rest_hours)
 
-        rest_loss = fatigue_level * 2  # Scale fatigue to rest loss
+        # Get biometric fatigue assessment
+        biometric_fatigue, alarm_probability, alarm_triggered = self.biometric_detector.detect_fatigue(
+            self.driver_state)
+        self.current_alarm_state = alarm_triggered
+        self.alarm_probability = alarm_probability
+
+        # Combine environmental and biometric fatigue factors
+        combined_fatigue = (fatigue_level + biometric_fatigue) / 2
+        rest_loss = combined_fatigue * 2  # Scale fatigue to rest loss
+
         self.driver_state.current_rest_loss = rest_loss  # Store current rest loss
         self.driver_state.rest_points -= rest_loss
         self.rest_points_history.append(self.driver_state.rest_points)
+        self.alarm_history.append(1.0 if alarm_triggered else 0.0)
 
         if self.driver_state.rest_points < self.rest_threshold:
             self.driver_state.rest_points = 100
@@ -125,9 +141,17 @@ class RestRecommendationSystem:
             y = start_y + height - (height * point / 100)
             coords.append((x, y))
 
-        # Draw line graph
+        # Draw rest points line
         if len(coords) >= 2:
             pygame.draw.lines(screen, (0, 128, 0), False, coords, 2)
+
+        # Draw alarm states as red dots
+        alarm_points = list(self.alarm_history)
+        for i, alarm in enumerate(alarm_points):
+            if alarm > 0:
+                x = start_x + (i * point_spacing)
+                y = start_y + 20  # Position at top of graph
+                pygame.draw.circle(screen, (255, 0, 0), (int(x), int(y)), 4)
 
     def update_simulation(self):
         while self.simulation_running:
@@ -199,11 +223,13 @@ class RestRecommendationSystem:
                 # Display other information
                 texts = [
                     f"Tick: {self.tick_count}",
-                    f"[D] Time of Day: {self.driver_state.time_of_day}",
-                    f"[W] Weather: {self.driver_state.weather_condition}",
-                    f"[T] Traffic: {self.driver_state.traffic_density}",
-                    f"[R] Road Type: {self.driver_state.road_type}",
+                    f"{self.driver_state.heart_rate:.1f} BPM, {self.driver_state.hrv:.1f} HRV, {self.driver_state.eda:.1f} μS",
+                    f"{self.driver_state.perclos:.2f} PERCLOS, {self.driver_state.blink_duration:.1f} ms, {self.driver_state.blink_rate:.1f} blinks/min",
+                    f"[D] Time of Day: {self.driver_state.time_of_day} [W] Weather: {self.driver_state.weather_condition}",
+                    f"[T] Traffic: {self.driver_state.traffic_density} [R] Road Type: {self.driver_state.road_type}",
                     f"[F] Simulators: { 'Running' if self.simulators_running else 'Paused'}",
+                    f"ALARM PROBABILITY: {self.alarm_probability:.2f}, THRESHOLD: {self.biometric_detector.ALARM_THRESHOLD}",
+                    f"FATIGUE ALARM: {'ACTIVE' if self.current_alarm_state else 'OFF'}",
                 ]
 
                 # Render the texts
