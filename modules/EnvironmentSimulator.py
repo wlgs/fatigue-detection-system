@@ -3,7 +3,7 @@ import random
 
 class EnvironmentSimulator:
     def __init__(self):
-        self.weather_change_prob = 1/36
+        self.weather_change_prob = 1/72
         self.weather_probabilities = {
             "clear": 0.5,
             "rain": 0.1,
@@ -11,13 +11,13 @@ class EnvironmentSimulator:
             "snow": 0.1,
             "sunny": 0.2,
         }
-        self.traffic_change_prob = 1/12
+        self.traffic_change_prob = 1/36
         self.traffic_probabilities = {
             "low": 0.4,
             "medium": 0.4,
             "high": 0.2
         }
-        self.road_change_prob = 1/12
+        self.road_change_prob = 1/36
         self.road_probabilities = {
             "highway": 0.6,
             "city": 0.3,
