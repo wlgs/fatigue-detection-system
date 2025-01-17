@@ -10,7 +10,7 @@ class BiometricFatigueDetector:
 
     def __init__(self):
         self.setup_bayesian_network()
-        self.ALARM_THRESHOLD = 0.7  # Threshold for triggering fatigue alarm
+        self.ALARM_THRESHOLD = 0.5  # Lower threshold for earlier warnings
 
     def setup_bayesian_network(self):
         self.model = BayesianNetwork([
@@ -72,14 +72,14 @@ class BiometricFatigueDetector:
                 [0.1]   # Very Fatigued (>22 bpm)
             ])
 
-        # Weights for biometric factors
+        # Weights for biometric factors - adjusted to emphasize important indicators
         WEIGHTS = {
             'heart_rate': 0.15,
-            'hrv': 0.20,
-            'eda': 0.15,
-            'perclos': 0.20,
+            'hrv': 0.25,        # Increased - strong indicator
+            'eda': 0.10,        # Decreased - less reliable
+            'perclos': 0.25,    # Increased - strong indicator
             'blink_duration': 0.15,
-            'blink_rate': 0.15
+            'blink_rate': 0.10  # Decreased - more variable
         }
 
         # Calculate fatigue probabilities
@@ -98,11 +98,11 @@ class BiometricFatigueDetector:
             evidence_card=[4, 4, 4, 4, 4, 4]
         )
 
-        # Alarm CPD based on fatigue level
+        # Alarm CPD with more aggressive response to fatigue
         cpd_alarm = TabularCPD(
             'Alarm', 2,
-            [[0.9, 0.1],   # No alarm probabilities when not fatigued/fatigued
-             [0.1, 0.9]],  # Alarm probabilities when not fatigued/fatigued
+            [[0.95, 0.2],   # No alarm probabilities when not fatigued/fatigued
+             [0.05, 0.8]],  # Alarm probabilities when not fatigued/fatigued
             evidence=['Fatigue'],
             evidence_card=[2]
         )
@@ -126,8 +126,8 @@ class BiometricFatigueDetector:
                 idx //= card
             return list(reversed(states))
 
-        # Weights for each state (Normal->Very Fatigued)
-        state_weights = [0.1, 0.4, 0.7, 0.9]
+        # Weights for each state (Normal->Very Fatigued) - more aggressive progression
+        state_weights = [0.1, 0.5, 0.8, 1.0]
 
         for i in range(num_combinations):
             states = index_to_states(i, cards)
@@ -167,18 +167,18 @@ class BiometricFatigueDetector:
         """Convert biometric measurements to discrete states"""
         states = {}
 
-        # Heart Rate (4 states based on simulator ranges)
-        if driver_state.heart_rate >= 70 and driver_state.heart_rate <= 80:
+        # Heart Rate (4 states based on simulator ranges) - adjusted thresholds
+        if driver_state.heart_rate >= 72:
             states['HeartRate'] = 0  # Normal/Rested
-        elif driver_state.heart_rate >= 65 and driver_state.heart_rate < 70:
+        elif driver_state.heart_rate >= 67 and driver_state.heart_rate < 72:
             states['HeartRate'] = 1  # Slightly Fatigued
-        elif driver_state.heart_rate >= 60 and driver_state.heart_rate < 65:
+        elif driver_state.heart_rate >= 62 and driver_state.heart_rate < 67:
             states['HeartRate'] = 2  # Fatigued
         else:
             states['HeartRate'] = 3  # Very Fatigued
 
-        # HRV (4 states based on simulator ranges)
-        if driver_state.hrv >= 45 and driver_state.hrv <= 55:
+        # HRV (4 states based on simulator ranges) - adjusted thresholds
+        if driver_state.hrv >= 45:
             states['HRV'] = 0  # Normal/Rested
         elif driver_state.hrv >= 35 and driver_state.hrv < 45:
             states['HRV'] = 1  # Slightly Fatigued
@@ -197,12 +197,12 @@ class BiometricFatigueDetector:
         else:
             states['EDA'] = 3  # Very Fatigued
 
-        # PERCLOS (4 states based on simulator ranges)
-        if driver_state.perclos >= 0.10 and driver_state.perclos <= 0.20:
+        # PERCLOS (4 states based on simulator ranges) - more sensitive thresholds
+        if driver_state.perclos < 0.15:
             states['PERCLOS'] = 0  # Normal/Rested
-        elif driver_state.perclos > 0.20 and driver_state.perclos <= 0.30:
+        elif driver_state.perclos >= 0.15 and driver_state.perclos < 0.25:
             states['PERCLOS'] = 1  # Slightly Fatigued
-        elif driver_state.perclos > 0.30 and driver_state.perclos <= 0.40:
+        elif driver_state.perclos >= 0.25 and driver_state.perclos < 0.35:
             states['PERCLOS'] = 2  # Fatigued
         else:
             states['PERCLOS'] = 3  # Very Fatigued
@@ -242,17 +242,7 @@ class BiometricFatigueDetector:
             for metric, prob in states.items()
         }
 
-        # Query the Bayesian network for fatigue and alarm probabilities
-        # Query the Bayesian network for fatigue probability first
         fatigue_result = self.inference.query(['Fatigue'], evidence=evidence)
         fatigue_prob = fatigue_result.values[1]  # Probability of high fatigue
-        print(fatigue_result)
 
-        # Then query for alarm probability using fatigue as evidence
-        alarm_evidence = evidence.copy()
-        alarm_evidence['Fatigue'] = 1 if fatigue_prob > 0.5 else 0
-        alarm_result = self.inference.query(['Alarm'], evidence=alarm_evidence)
-        print(alarm_result)
-        alarm_prob = alarm_result.values[1]    # Probability of alarm
-
-        return fatigue_prob, alarm_prob, alarm_prob > self.ALARM_THRESHOLD
+        return fatigue_prob, fatigue_prob, fatigue_prob >= self.ALARM_THRESHOLD

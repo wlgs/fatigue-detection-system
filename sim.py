@@ -150,7 +150,7 @@ class RestRecommendationSystem:
         for i, alarm in enumerate(alarm_points):
             if alarm > 0:
                 x = start_x + (i * point_spacing)
-                y = start_y + 20  # Position at top of graph
+                y = start_y + height - 20  # Position at bottom of graph
                 pygame.draw.circle(screen, (255, 0, 0), (int(x), int(y)), 4)
 
     def update_simulation(self):
@@ -228,7 +228,7 @@ class RestRecommendationSystem:
                     f"[D] Time of Day: {self.driver_state.time_of_day} [W] Weather: {self.driver_state.weather_condition}",
                     f"[T] Traffic: {self.driver_state.traffic_density} [R] Road Type: {self.driver_state.road_type}",
                     f"[F] Simulators: { 'Running' if self.simulators_running else 'Paused'}",
-                    f"ALARM PROBABILITY: {self.alarm_probability:.2f}, THRESHOLD: {self.biometric_detector.ALARM_THRESHOLD}",
+                    f"Predicted Fatigue: {self.alarm_probability:.2f}/{self.biometric_detector.ALARM_THRESHOLD}",
                     f"FATIGUE ALARM: {'ACTIVE' if self.current_alarm_state else 'OFF'}",
                 ]
 
