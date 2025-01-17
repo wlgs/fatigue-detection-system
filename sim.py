@@ -151,7 +151,7 @@ class RestRecommendationSystem:
             if alarm > 0:
                 x = start_x + (i * point_spacing)
                 y = start_y + height - 20  # Position at bottom of graph
-                pygame.draw.circle(screen, (255, 0, 0), (int(x), int(y)), 4)
+                pygame.draw.circle(screen, (255, 0, 0), (int(x), int(y)), 2)
 
     def update_simulation(self):
         while self.simulation_running:
