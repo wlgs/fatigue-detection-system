@@ -53,6 +53,10 @@ class RestRecommendationSystem:
             self.driver_state.road_type = road_options[next_index]
 
     def run_tick(self):
+        time_since_rest_hours = (
+            self.tick_count - self.driver_state.last_rest_tick) * 5 / 60
+        fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
+            self.driver_state, time_since_rest_hours)
         if self.simulators_running:
             self.driver_state.weather_condition = self.environment_simulator.simulate_weather(
                 self.driver_state.weather_condition)
@@ -61,14 +65,9 @@ class RestRecommendationSystem:
             self.driver_state.road_type = self.environment_simulator.simulate_road_type(
                 self.driver_state.road_type)
             self.driver_state = self.driver_simulator.simulate_physiological(
-                self.driver_state)
+                self.driver_state, fatigue_level)
             current_hour = (self.tick_count * 5 // 60) % 24
             self.driver_state.time_of_day = "night" if current_hour < 6 or current_hour > 20 else "day"
-
-        time_since_rest_hours = (
-            self.tick_count - self.driver_state.last_rest_tick) * 5 / 60
-        fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
-            self.driver_state, time_since_rest_hours)
 
         rest_loss = fatigue_level * 2  # Scale fatigue to rest loss
         self.driver_state.current_rest_loss = rest_loss  # Store current rest loss
@@ -77,9 +76,6 @@ class RestRecommendationSystem:
 
         if self.driver_state.rest_points < self.rest_threshold:
             self.driver_state.rest_points = 100
-            self.driver_state.pulse = 70.0
-            self.driver_state.eyelid_movement = 1.0
-            self.driver_state.current_speed = 0.0
             self.driver_state.last_drive_tick_time = self.tick_count - \
                 self.driver_state.last_rest_tick
             self.driver_state.last_rest_tick = self.tick_count
@@ -203,9 +199,6 @@ class RestRecommendationSystem:
                 # Display other information
                 texts = [
                     f"Tick: {self.tick_count}",
-                    f"Speed: {self.driver_state.current_speed:.1f} km/h",
-                    f"Pulse: {self.driver_state.pulse:.1f}",
-                    f"Eyelid Movement: {self.driver_state.eyelid_movement:.2f}",
                     f"[D] Time of Day: {self.driver_state.time_of_day}",
                     f"[W] Weather: {self.driver_state.weather_condition}",
                     f"[T] Traffic: {self.driver_state.traffic_density}",

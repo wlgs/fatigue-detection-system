@@ -9,7 +9,7 @@ class BiometricFatigueDetector:
         self.THRESHOLD_PERCLOS_HIGH = 0.40  # percentage
         self.THRESHOLD_BLINK_DURATION_HIGH = 500  # ms
         self.THRESHOLD_BLINK_RATE_HIGH = 25  # blinks per minute
-        
+
         # Weights for different measurements
         self.weights = {
             'heart_rate': 0.15,
@@ -72,6 +72,6 @@ class BiometricFatigueDetector:
 
         # Calculate weighted average fatigue level
         total_fatigue = sum(score * self.weights[metric]
-                           for metric, score in fatigue_scores.items())
-        
+                            for metric, score in fatigue_scores.items())
+
         return total_fatigue

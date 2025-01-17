@@ -12,8 +12,6 @@ class FatigueEvaluator:
         self.model = BayesianNetwork([
             ('TimeOfDay', 'Fatigue'),
             ('TimeSinceRest', 'Fatigue'),
-            ('Pulse', 'Fatigue'),
-            ('EyelidMovement', 'Fatigue'),
             ('Weather', 'Fatigue'),
             ('Traffic', 'Fatigue'),
             ('RoadType', 'Fatigue')
@@ -23,9 +21,6 @@ class FatigueEvaluator:
         cpd_time = TabularCPD('TimeOfDay', 2, [[0.2], [0.8]])  # Day, night
         cpd_time_since_rest = TabularCPD(
             'TimeSinceRest', 2, [[0.2], [0.8]])  # <2 hours, >2 hours
-        cpd_pulse = TabularCPD('Pulse', 2, [[0.3], [0.7]])  # <85, >85
-        cpd_eyelid = TabularCPD('EyelidMovement', 2, [
-                                [0.4], [0.6]])  # <0.6, >0.6
 
         # Weather impacts fatigue (5 states)
         cpd_weather = TabularCPD('Weather', 5, [
@@ -51,35 +46,28 @@ class FatigueEvaluator:
         ])
 
         WEIGHTS = {
-            'time_of_day': 0.15,
-            'time_since_rest': 0.2,
-            'pulse': 0.15,
-            'eyelid': 0.15,
-            'weather': 0.1,
-            'traffic': 0.1,
-            'road': 0.1
+            'time_of_day': 0.25,
+            'time_since_rest': 0.3,
+            'weather': 0.15,
+            'traffic': 0.15,
+            'road': 0.15
         }
 
-        fatigue_probs = np.zeros((2, 720))
+        fatigue_probs = np.zeros((2, 180))
 
-        for i in range(720):
+        for i in range(180):
             # Get state indices for current combination
             road_state = i % 3
             traffic_state = (i // 3) % 3
             weather_state = (i // 9) % 5
-            eyelid_state = (i // 45) % 2
-            pulse_state = (i // 90) % 2
-            rest_state = (i // 180) % 2
-            time_state = (i // 360) % 2
+            rest_state = (i // 45) % 2
+            time_state = (i // 90) % 2
+
             # Calculate contribution from each factor using CPD values
             time_factor = float(cpd_time.get_values()[
                                 time_state]) * WEIGHTS['time_of_day']
             rest_factor = float(cpd_time_since_rest.get_values()[
                                 rest_state]) * WEIGHTS['time_since_rest']
-            pulse_factor = float(cpd_pulse.get_values()[
-                                 pulse_state]) * WEIGHTS['pulse']
-            eyelid_factor = float(cpd_eyelid.get_values()[
-                                  eyelid_state]) * WEIGHTS['eyelid']
             weather_factor = float(cpd_weather.get_values()[
                                    weather_state]) * WEIGHTS['weather']
             traffic_factor = float(cpd_traffic.get_values()[
@@ -90,8 +78,6 @@ class FatigueEvaluator:
             fatigue_prob = min(1.0, (
                 time_factor +
                 rest_factor +
-                pulse_factor +
-                eyelid_factor +
                 weather_factor +
                 traffic_factor +
                 road_factor
@@ -104,13 +90,13 @@ class FatigueEvaluator:
         cpd_fatigue = TabularCPD(
             'Fatigue', 2,
             fatigue_probs,
-            evidence=['TimeOfDay', 'TimeSinceRest', 'Pulse',
-                      'EyelidMovement', 'Weather', 'Traffic', 'RoadType'],
-            evidence_card=[2, 2, 2, 2, 5, 3, 3]
+            evidence=['TimeOfDay', 'TimeSinceRest',
+                      'Weather', 'Traffic', 'RoadType'],
+            evidence_card=[2, 2, 5, 3, 3]
         )
 
-        self.model.add_cpds(cpd_time, cpd_time_since_rest, cpd_pulse,
-                            cpd_eyelid, cpd_weather, cpd_traffic, cpd_road_type, cpd_fatigue)
+        self.model.add_cpds(cpd_time, cpd_time_since_rest,
+                            cpd_weather, cpd_traffic, cpd_road_type, cpd_fatigue)
         self.inference = VariableElimination(self.model)
 
     def get_model(self):
@@ -120,8 +106,6 @@ class FatigueEvaluator:
         evidence = {
             'TimeOfDay': 1 if driver_state.time_of_day == "night" else 0,
             'TimeSinceRest': 1 if time_since_rest_hours > 2 else 0,
-            'Pulse': 1 if driver_state.pulse > 85 else 0,
-            'EyelidMovement': 1 if driver_state.eyelid_movement < 0.6 else 0,
             'Weather': {
                 'clear': 0,
                 'rain': 1,
