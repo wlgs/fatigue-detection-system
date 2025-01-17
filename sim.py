@@ -187,7 +187,7 @@ class RestRecommendationSystem:
                 # Display rest-related information
                 rest_info_texts = [
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
-                    f"Current Rest Loss: {self.driver_state.current_rest_loss:.3f}/tick",
+                    # f"Current Rest Loss: {self.driver_state.current_rest_loss:.3f}/tick",
                     f"Rest Threshold: {self.rest_threshold}",
                     f"Last drive time: {self.driver_state.last_drive_tick_time*5//60}h {self.driver_state.last_drive_tick_time*5%60}m",
                 ]
