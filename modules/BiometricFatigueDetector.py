@@ -91,7 +91,8 @@ class BiometricFatigueDetector:
             fatigue_probs,
             evidence=['HeartRate', 'HRV', 'EDA',
                       'PERCLOS', 'BlinkDuration', 'BlinkRate'],
-            evidence_card=[3, 3, 3, 4, 4, 4]  # Updated cardinality to match new states
+            # Updated cardinality to match new states
+            evidence_card=[3, 3, 3, 4, 4, 4]
         )
 
         # Alarm CPD based on fatigue level
@@ -124,33 +125,35 @@ class BiometricFatigueDetector:
 
         for i in range(num_combinations):
             states = index_to_states(i, cards)
-            
+
             # Calculate baseline fatigue probability
             fatigue_contrib = 0.0
-            
+
             # Heart Rate contribution (3 states)
             hr_weights = [0.1, 0.4, 0.3]  # Normal, Low, High
             fatigue_contrib += hr_weights[states[0]] * weights['heart_rate']
-            
+
             # HRV contribution (3 states)
             hrv_weights = [0.1, 0.5, 0.2]  # Normal, Low, High
             fatigue_contrib += hrv_weights[states[1]] * weights['hrv']
-            
+
             # EDA contribution (3 states)
             eda_weights = [0.1, 0.4, 0.3]  # Normal, Low, High
             fatigue_contrib += eda_weights[states[2]] * weights['eda']
-            
+
             # PERCLOS contribution (4 states)
             perclos_weights = [0.1, 0.3, 0.6, 0.9]  # Low to Very High
             fatigue_contrib += perclos_weights[states[3]] * weights['perclos']
-            
+
             # Blink Duration contribution (4 states)
             blink_dur_weights = [0.1, 0.3, 0.6, 0.9]  # Normal to Very Long
-            fatigue_contrib += blink_dur_weights[states[4]] * weights['blink_duration']
-            
+            fatigue_contrib += blink_dur_weights[states[4]
+                                                 ] * weights['blink_duration']
+
             # Blink Rate contribution (4 states)
             blink_rate_weights = [0.1, 0.3, 0.6, 0.9]  # Normal to Very High
-            fatigue_contrib += blink_rate_weights[states[5]] * weights['blink_rate']
+            fatigue_contrib += blink_rate_weights[states[5]
+                                                  ] * weights['blink_rate']
 
             # Normalize and store probabilities
             fatigue_prob = min(1.0, fatigue_contrib)

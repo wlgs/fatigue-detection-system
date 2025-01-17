@@ -62,7 +62,7 @@ class RestRecommendationSystem:
         fatigue_level = self.fatigue_evaluator.evaluate_fatigue(
             self.driver_state, time_since_rest_hours)
         self.driver_simulator.simulate_physiological(
-            self.driver_state, fatigue_level)
+            self.driver_state, self.driver_state.rest_points)
         if self.simulators_running:
             self.driver_state.weather_condition = self.environment_simulator.simulate_weather(
                 self.driver_state.weather_condition)
@@ -95,7 +95,7 @@ class RestRecommendationSystem:
             self.driver_state.last_drive_tick_time = self.tick_count - \
                 self.driver_state.last_rest_tick
             self.driver_state.last_rest_tick = self.tick_count
-
+            self.driver_simulator._reset_to_normal_state(self.driver_state)
         self.tick_count += 1
 
     def draw_graph(self, screen, start_x, start_y, width, height):
