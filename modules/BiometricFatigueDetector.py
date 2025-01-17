@@ -23,50 +23,53 @@ class BiometricFatigueDetector:
             ('Fatigue', 'Alarm')
         ])
 
-        # CPDs for biometric measurements with multiple states
+        # CPDs for biometric measurements with multiple states based on simulator ranges
         cpd_heart_rate = TabularCPD(
-            'HeartRate', 3, [
-                [0.7],  # Normal (60-100)
-                [0.2],  # Low (<60)
-                [0.1]   # High (>100)
+            'HeartRate', 4, [
+                [0.4],  # Normal/Rested (70-80 bpm)
+                [0.3],  # Slightly Fatigued (65-70 bpm)
+                [0.2],  # Fatigued (60-65 bpm)
+                [0.1]   # Very Fatigued (<60 bpm)
             ])
 
         cpd_hrv = TabularCPD(
-            'HRV', 3, [
-                [0.7],  # Normal (30-60)
-                [0.2],  # Low (<30)
-                [0.1]   # High (>60)
+            'HRV', 4, [
+                [0.4],  # Normal/Rested (45-55 ms)
+                [0.3],  # Slightly Fatigued (35-45 ms)
+                [0.2],  # Fatigued (25-35 ms)
+                [0.1]   # Very Fatigued (<25 ms)
             ])
 
         cpd_eda = TabularCPD(
-            'EDA', 3, [
-                [0.7],  # Normal (2-12)
-                [0.2],  # Low (<2)
-                [0.1]   # High (>12)
+            'EDA', 4, [
+                [0.4],  # Normal/Rested (6-8 μS)
+                [0.3],  # Slightly Fatigued (4-6 μS)
+                [0.2],  # Fatigued (2-4 μS)
+                [0.1]   # Very Fatigued (<2 μS)
             ])
 
         cpd_perclos = TabularCPD(
             'PERCLOS', 4, [
-                [0.4],  # Low (<0.15)
-                [0.3],  # Medium (0.15-0.25)
-                [0.2],  # High (0.25-0.35)
-                [0.1]   # Very High (>0.35)
+                [0.4],  # Normal/Rested (0.10-0.20)
+                [0.3],  # Slightly Fatigued (0.20-0.30)
+                [0.2],  # Fatigued (0.30-0.40)
+                [0.1]   # Very Fatigued (>0.40)
             ])
 
         cpd_blink_duration = TabularCPD(
             'BlinkDuration', 4, [
-                [0.4],  # Normal (100-300)
-                [0.3],  # Slightly Long (300-400)
-                [0.2],  # Long (400-500)
-                [0.1]   # Very Long (>500)
+                [0.4],  # Normal/Rested (150-250 ms)
+                [0.3],  # Slightly Fatigued (250-350 ms)
+                [0.2],  # Fatigued (350-450 ms)
+                [0.1]   # Very Fatigued (>450 ms)
             ])
 
         cpd_blink_rate = TabularCPD(
             'BlinkRate', 4, [
-                [0.4],  # Normal (8-16)
-                [0.3],  # Slightly High (16-20)
-                [0.2],  # High (20-25)
-                [0.1]   # Very High (>25)
+                [0.4],  # Normal/Rested (10-14 bpm)
+                [0.3],  # Slightly Fatigued (14-18 bpm)
+                [0.2],  # Fatigued (18-22 bpm)
+                [0.1]   # Very Fatigued (>22 bpm)
             ])
 
         # Weights for biometric factors
@@ -91,8 +94,8 @@ class BiometricFatigueDetector:
             fatigue_probs,
             evidence=['HeartRate', 'HRV', 'EDA',
                       'PERCLOS', 'BlinkDuration', 'BlinkRate'],
-            # Updated cardinality to match new states
-            evidence_card=[3, 3, 3, 4, 4, 4]
+            # All variables now have 4 states
+            evidence_card=[4, 4, 4, 4, 4, 4]
         )
 
         # Alarm CPD based on fatigue level
@@ -110,9 +113,9 @@ class BiometricFatigueDetector:
 
     def _calculate_fatigue_probabilities(self, cpds, weights):
         """Calculate fatigue probabilities based on input CPDs and weights"""
-        # Calculate the total number of combinations
-        cards = [3, 3, 3, 4, 4, 4]  # Cardinality of each node
-        num_combinations = np.prod(cards)
+        # All variables now have 4 states
+        cards = [4, 4, 4, 4, 4, 4]  # Cardinality of each node
+        num_combinations = np.prod(cards)  # Should be 4096 (4^6)
         probs = np.zeros((2, num_combinations))
 
         # Helper function to convert flat index to state indices
@@ -123,37 +126,33 @@ class BiometricFatigueDetector:
                 idx //= card
             return list(reversed(states))
 
+        # Weights for each state (Normal->Very Fatigued)
+        state_weights = [0.1, 0.4, 0.7, 0.9]
+
         for i in range(num_combinations):
             states = index_to_states(i, cards)
 
-            # Calculate baseline fatigue probability
+            # Calculate fatigue contribution from each metric
             fatigue_contrib = 0.0
 
-            # Heart Rate contribution (3 states)
-            hr_weights = [0.1, 0.4, 0.3]  # Normal, Low, High
-            fatigue_contrib += hr_weights[states[0]] * weights['heart_rate']
+            # Heart Rate contribution
+            fatigue_contrib += state_weights[states[0]] * weights['heart_rate']
 
-            # HRV contribution (3 states)
-            hrv_weights = [0.1, 0.5, 0.2]  # Normal, Low, High
-            fatigue_contrib += hrv_weights[states[1]] * weights['hrv']
+            # HRV contribution
+            fatigue_contrib += state_weights[states[1]] * weights['hrv']
 
-            # EDA contribution (3 states)
-            eda_weights = [0.1, 0.4, 0.3]  # Normal, Low, High
-            fatigue_contrib += eda_weights[states[2]] * weights['eda']
+            # EDA contribution
+            fatigue_contrib += state_weights[states[2]] * weights['eda']
 
-            # PERCLOS contribution (4 states)
-            perclos_weights = [0.1, 0.3, 0.6, 0.9]  # Low to Very High
-            fatigue_contrib += perclos_weights[states[3]] * weights['perclos']
+            # PERCLOS contribution
+            fatigue_contrib += state_weights[states[3]] * weights['perclos']
 
-            # Blink Duration contribution (4 states)
-            blink_dur_weights = [0.1, 0.3, 0.6, 0.9]  # Normal to Very Long
-            fatigue_contrib += blink_dur_weights[states[4]
-                                                 ] * weights['blink_duration']
+            # Blink Duration contribution
+            fatigue_contrib += state_weights[states[4]
+                                             ] * weights['blink_duration']
 
-            # Blink Rate contribution (4 states)
-            blink_rate_weights = [0.1, 0.3, 0.6, 0.9]  # Normal to Very High
-            fatigue_contrib += blink_rate_weights[states[5]
-                                                  ] * weights['blink_rate']
+            # Blink Rate contribution
+            fatigue_contrib += state_weights[states[5]] * weights['blink_rate']
 
             # Normalize and store probabilities
             fatigue_prob = min(1.0, fatigue_contrib)
@@ -162,63 +161,71 @@ class BiometricFatigueDetector:
 
         return probs
 
+        return probs
+
     def _get_biometric_states(self, driver_state):
         """Convert biometric measurements to discrete states"""
         states = {}
 
-        # Heart Rate (3 states)
-        if driver_state.heart_rate < 60:
-            states['HeartRate'] = 1  # Low
-        elif driver_state.heart_rate > 100:
-            states['HeartRate'] = 2  # High
+        # Heart Rate (4 states based on simulator ranges)
+        if driver_state.heart_rate >= 70 and driver_state.heart_rate <= 80:
+            states['HeartRate'] = 0  # Normal/Rested
+        elif driver_state.heart_rate >= 65 and driver_state.heart_rate < 70:
+            states['HeartRate'] = 1  # Slightly Fatigued
+        elif driver_state.heart_rate >= 60 and driver_state.heart_rate < 65:
+            states['HeartRate'] = 2  # Fatigued
         else:
-            states['HeartRate'] = 0  # Normal
+            states['HeartRate'] = 3  # Very Fatigued
 
-        # HRV (3 states)
-        if driver_state.hrv < 30:
-            states['HRV'] = 1  # Low
-        elif driver_state.hrv > 60:
-            states['HRV'] = 2  # High
+        # HRV (4 states based on simulator ranges)
+        if driver_state.hrv >= 45 and driver_state.hrv <= 55:
+            states['HRV'] = 0  # Normal/Rested
+        elif driver_state.hrv >= 35 and driver_state.hrv < 45:
+            states['HRV'] = 1  # Slightly Fatigued
+        elif driver_state.hrv >= 25 and driver_state.hrv < 35:
+            states['HRV'] = 2  # Fatigued
         else:
-            states['HRV'] = 0  # Normal
+            states['HRV'] = 3  # Very Fatigued
 
-        # EDA (3 states)
-        if driver_state.eda < 2:
-            states['EDA'] = 1  # Low
-        elif driver_state.eda > 12:
-            states['EDA'] = 2  # High
+        # EDA (4 states based on simulator ranges)
+        if driver_state.eda >= 6 and driver_state.eda <= 8:
+            states['EDA'] = 0  # Normal/Rested
+        elif driver_state.eda >= 4 and driver_state.eda < 6:
+            states['EDA'] = 1  # Slightly Fatigued
+        elif driver_state.eda >= 2 and driver_state.eda < 4:
+            states['EDA'] = 2  # Fatigued
         else:
-            states['EDA'] = 0  # Normal
+            states['EDA'] = 3  # Very Fatigued
 
-        # PERCLOS (4 states)
-        if driver_state.perclos < 0.15:
-            states['PERCLOS'] = 0  # Low
-        elif driver_state.perclos < 0.25:
-            states['PERCLOS'] = 1  # Medium
-        elif driver_state.perclos < 0.35:
-            states['PERCLOS'] = 2  # High
+        # PERCLOS (4 states based on simulator ranges)
+        if driver_state.perclos >= 0.10 and driver_state.perclos <= 0.20:
+            states['PERCLOS'] = 0  # Normal/Rested
+        elif driver_state.perclos > 0.20 and driver_state.perclos <= 0.30:
+            states['PERCLOS'] = 1  # Slightly Fatigued
+        elif driver_state.perclos > 0.30 and driver_state.perclos <= 0.40:
+            states['PERCLOS'] = 2  # Fatigued
         else:
-            states['PERCLOS'] = 3  # Very High
+            states['PERCLOS'] = 3  # Very Fatigued
 
-        # Blink Duration (4 states)
-        if driver_state.blink_duration < 300:
-            states['BlinkDuration'] = 0  # Normal
-        elif driver_state.blink_duration < 400:
-            states['BlinkDuration'] = 1  # Slightly Long
-        elif driver_state.blink_duration < 500:
-            states['BlinkDuration'] = 2  # Long
+        # Blink Duration (4 states based on simulator ranges)
+        if driver_state.blink_duration >= 150 and driver_state.blink_duration <= 250:
+            states['BlinkDuration'] = 0  # Normal/Rested
+        elif driver_state.blink_duration > 250 and driver_state.blink_duration <= 350:
+            states['BlinkDuration'] = 1  # Slightly Fatigued
+        elif driver_state.blink_duration > 350 and driver_state.blink_duration <= 450:
+            states['BlinkDuration'] = 2  # Fatigued
         else:
-            states['BlinkDuration'] = 3  # Very Long
+            states['BlinkDuration'] = 3  # Very Fatigued
 
-        # Blink Rate (4 states)
-        if driver_state.blink_rate < 16:
-            states['BlinkRate'] = 0  # Normal
-        elif driver_state.blink_rate < 20:
-            states['BlinkRate'] = 1  # Slightly High
-        elif driver_state.blink_rate < 25:
-            states['BlinkRate'] = 2  # High
+        # Blink Rate (4 states based on simulator ranges)
+        if driver_state.blink_rate >= 10 and driver_state.blink_rate <= 14:
+            states['BlinkRate'] = 0  # Normal/Rested
+        elif driver_state.blink_rate > 14 and driver_state.blink_rate <= 18:
+            states['BlinkRate'] = 1  # Slightly Fatigued
+        elif driver_state.blink_rate > 18 and driver_state.blink_rate <= 22:
+            states['BlinkRate'] = 2  # Fatigued
         else:
-            states['BlinkRate'] = 3  # Very High
+            states['BlinkRate'] = 3  # Very Fatigued
 
         return states
 
@@ -239,11 +246,13 @@ class BiometricFatigueDetector:
         # Query the Bayesian network for fatigue probability first
         fatigue_result = self.inference.query(['Fatigue'], evidence=evidence)
         fatigue_prob = fatigue_result.values[1]  # Probability of high fatigue
+        print(fatigue_result)
 
         # Then query for alarm probability using fatigue as evidence
         alarm_evidence = evidence.copy()
         alarm_evidence['Fatigue'] = 1 if fatigue_prob > 0.5 else 0
         alarm_result = self.inference.query(['Alarm'], evidence=alarm_evidence)
+        print(alarm_result)
         alarm_prob = alarm_result.values[1]    # Probability of alarm
 
         return fatigue_prob, alarm_prob, alarm_prob > self.ALARM_THRESHOLD
