@@ -19,8 +19,9 @@ class RestRecommendationSystem:
         self.alarm_probability = 0.0
         self.rest_threshold = 30.0
         self.simulation_running = False
-        self.rest_points_history = deque(maxlen=200)  # Store last 200 points
-        self.alarm_history = deque(maxlen=200)  # Store alarm states
+        # Initialize with 200 zero points to show full width graph at start
+        self.rest_points_history = deque([100.0] * 200, maxlen=200)  # Store last 200 points
+        self.alarm_history = deque([0.0] * 200, maxlen=200)  # Store alarm states
         self.paused = True
         self.simulators_running = True
         self.tick_count = 0
@@ -99,8 +100,6 @@ class RestRecommendationSystem:
         self.tick_count += 1
 
     def draw_graph(self, screen, start_x, start_y, width, height):
-        if len(self.rest_points_history) < 2:
-            return
 
         pygame.draw.rect(screen, (240, 240, 240),
                          (start_x, start_y, width, height))
