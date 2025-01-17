@@ -27,57 +27,72 @@ class DriverSimulator:
         target_value = min_val + (range_size * fatigue_effect)
         return target_value
 
-    def simulate_physiological(self, driver_state, current_fatigue_level):
+    def _update_metric(self, current_value, target_value, variance, min_val, max_val):
+        """Helper method to update a physiological metric"""
+        current_value += random.uniform(-variance, variance)
+        return max(min_val, min(max_val, current_value * 0.95 + target_value * 0.05))
+
+    def simulate_physiological(self, driver_state, energy_level):
         """
-        Updates driver's physiological metrics based on their current fatigue level
+        Updates driver's physiological metrics based on energy level (100 = fully rested, 0 = maximum fatigue)
         """
-        # Heart Rate (decreases with fatigue)
-        # 75 normal -> 55 when fatigued
-        target_hr = 75 - (current_fatigue_level * 20)
-        driver_state.heart_rate += random.uniform(-self.heart_rate_variance,
-                                                  self.heart_rate_variance)
-        driver_state.heart_rate = max(45, min(100,
-                                              driver_state.heart_rate * 0.95 + target_hr * 0.05))
+        # Convert energy level to fatigue factor (0-1 scale)
+        fatigue_factor = (100 - energy_level) / 100.0
 
-        # Heart Rate Variability (decreases with fatigue)
-        # 50 normal -> 25 when fatigued
-        target_hrv = 50 - (current_fatigue_level * 25)
-        driver_state.hrv += random.uniform(-self.hrv_variance,
-                                           self.hrv_variance)
-        driver_state.hrv = max(15, min(70,
-                                       driver_state.hrv * 0.95 + target_hrv * 0.05))
+        # Define normal (rested) and fatigued values for each metric
+        metrics = {
+            'heart_rate': {
+                'rested': 75, 'fatigued': 55,
+                'min': 45, 'max': 100,
+                'variance': self.heart_rate_variance
+            },
+            'hrv': {
+                'rested': 50, 'fatigued': 25,
+                'min': 15, 'max': 70,
+                'variance': self.hrv_variance
+            },
+            'eda': {
+                'rested': 7, 'fatigued': 2,
+                'min': 1, 'max': 12,
+                'variance': self.eda_variance
+            },
+            'perclos': {
+                'rested': 0.15, 'fatigued': 0.40,
+                'min': 0.1, 'max': 0.5,
+                'variance': self.perclos_variance
+            },
+            'blink_duration': {
+                'rested': 200, 'fatigued': 500,
+                'min': 100, 'max': 600,
+                'variance': self.blink_duration_variance
+            },
+            'blink_rate': {
+                'rested': 12, 'fatigued': 27,
+                'min': 8, 'max': 30,
+                'variance': self.blink_rate_variance
+            }
+        }
 
-        # Electrodermal Activity (decreases with fatigue)
-        # 7 normal -> 2 when fatigued
-        target_eda = 7 - (current_fatigue_level * 5)
-        driver_state.eda += random.uniform(-self.eda_variance,
-                                           self.eda_variance)
-        driver_state.eda = max(1, min(12,
-                                      driver_state.eda * 0.95 + target_eda * 0.05))
+        # Update each metric
+        for metric, values in metrics.items():
+            # Calculate target value based on current fatigue
+            if metric in ['perclos', 'blink_duration', 'blink_rate']:
+                # These metrics increase with fatigue
+                target = values['rested'] + \
+                    (values['fatigued'] - values['rested']) * fatigue_factor
+            else:
+                # These metrics decrease with fatigue
+                target = values['rested'] - \
+                    (values['rested'] - values['fatigued']) * fatigue_factor
 
-        # PERCLOS (increases with fatigue)
-        # 0.15 normal -> 0.40 when fatigued
-        target_perclos = 0.15 + (current_fatigue_level * 0.25)
-        driver_state.perclos += random.uniform(-self.perclos_variance,
-                                               self.perclos_variance)
-        driver_state.perclos = max(0.1, min(0.5,
-                                            driver_state.perclos * 0.95 + target_perclos * 0.05))
-
-        # Blink Duration (increases with fatigue)
-        # 200 normal -> 500 when fatigued
-        target_blink_duration = 200 + (current_fatigue_level * 300)
-        driver_state.blink_duration += random.uniform(-self.blink_duration_variance,
-                                                      self.blink_duration_variance)
-        driver_state.blink_duration = max(100, min(600,
-                                                   driver_state.blink_duration * 0.95 + target_blink_duration * 0.05))
-
-        # Blink Rate (increases with fatigue)
-        # 12 normal -> 27 when fatigued
-        target_blink_rate = 12 + (current_fatigue_level * 15)
-        driver_state.blink_rate += random.uniform(-self.blink_rate_variance,
-                                                  self.blink_rate_variance)
-        driver_state.blink_rate = max(8, min(30,
-                                             driver_state.blink_rate * 0.95 + target_blink_rate * 0.05))
+            # Update the metric
+            current_value = getattr(driver_state, metric)
+            new_value = self._update_metric(
+                current_value, target,
+                values['variance'],
+                values['min'], values['max']
+            )
+            setattr(driver_state, metric, new_value)
 
         return driver_state
 
