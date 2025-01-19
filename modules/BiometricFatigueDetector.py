@@ -77,7 +77,7 @@ class BiometricFatigueDetector:
             'heart_rate': 0.15,
             'hrv': 0.25,        # Increased - strong indicator
             'eda': 0.10,        # Decreased - less reliable
-            'perclos': 0.25,    # Increased - strong indicator
+            'perclos': 0.3,    # Increased - strong indicator
             'blink_duration': 0.15,
             'blink_rate': 0.10  # Decreased - more variable
         }

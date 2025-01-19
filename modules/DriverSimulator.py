@@ -37,12 +37,13 @@ class DriverSimulator:
         Updates driver's physiological metrics based on energy level (100 = fully rested, 0 = maximum fatigue)
         """
         # Convert energy level to fatigue factor (0-1 scale)
-        fatigue_factor = (100 - energy_level) / 100.0
+        fatigue_bias = 25  # Bias to make fatigue more impactful
+        fatigue_factor = (100 - fatigue_bias - energy_level) / 100.0
 
         # Define normal (rested) and fatigued values for each metric
         metrics = {
             'heart_rate': {
-                'rested': 75, 'fatigued': 55,
+                'rested': 80, 'fatigued': 55,
                 'min': 45, 'max': 100,
                 'variance': self.heart_rate_variance
             },

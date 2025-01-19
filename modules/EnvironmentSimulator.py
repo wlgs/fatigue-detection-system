@@ -47,3 +47,9 @@ class EnvironmentSimulator:
                 list(self.traffic_probabilities.values())
             )[0]
         return current_traffic
+
+    def simulate_time_of_day(self,
+                             current_time_of_day, tick_count):
+        if tick_count % 288 == 0:
+            return "night" if current_time_of_day == "day" else "day"
+        return current_time_of_day
