@@ -13,8 +13,8 @@ SIMULATION_TICK_RATE = 5000
 
 
 class RestRecommendationSystem:
-    def __init__(self):
-        self.driver_state = DriverState()
+    def __init__(self, scenario=None):
+        self.driver_state = DriverState(scenario=scenario)
         self.environment_simulator = EnvironmentSimulator()
         self.driver_simulator = DriverSimulator()
         self.fatigue_evaluator = FatigueEvaluator()
@@ -28,11 +28,12 @@ class RestRecommendationSystem:
             maxlen=self.deque_length)
         self.alarm_history = deque(maxlen=self.deque_length)
         self.paused = True
-        self.simulators_running = True
+        self.simulators_running = False
         self.tick_count = 0
         self.current_alarm_state = False
         self.valid_alarms_count = 0
         self.total_alarms_count = 0
+        self.missed_alarms_count = 0
         for _ in range(0, 200):
             self.rest_points_history.append(100.0)
             self.alarm_history.append([0.0, (0, 0, 0)])
@@ -93,6 +94,10 @@ class RestRecommendationSystem:
             self.total_alarms_count += 1
             if self._is_alarm_valid():
                 self.valid_alarms_count += 1
+        else:
+            if self._is_alarm_valid():
+                self.missed_alarms_count += 1
+
         self.current_alarm_state = alarm_triggered
         self.alarm_probability = alarm_probability
 
@@ -251,7 +256,7 @@ class RestRecommendationSystem:
                     f"[F] Simulators: { 'Running' if self.simulators_running else 'Paused'}",
                     f"Predicted Fatigue: {self.alarm_probability:.2f}/{self.biometric_detector.ALARM_THRESHOLD}",
                     f"FATIGUE ALARM: {'ACTIVE' if self.current_alarm_state else 'OFF'}",
-                    f"Valid / Total: {self.valid_alarms_count}/{self.total_alarms_count}  -  {self.valid_alarms_count/(self.total_alarms_count if self.total_alarms_count > 0 else 1)*100:.2f}%",
+                    f"Valid / Missed / Total: {self.valid_alarms_count} / {self.missed_alarms_count} / {self.total_alarms_count}  -  ACC: {self.valid_alarms_count/((self.total_alarms_count if self.total_alarms_count > 0 else 1) + (self.missed_alarms_count if self.missed_alarms_count > 0 else 1))*100:.2f}%",
                 ]
 
                 # Render the texts
@@ -278,5 +283,5 @@ class RestRecommendationSystem:
 
 
 if __name__ == "__main__":
-    system = RestRecommendationSystem()
+    system = RestRecommendationSystem("worst")
     system.start()
