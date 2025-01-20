@@ -39,7 +39,7 @@ class RestRecommendationSystem:
             self.alarm_history.append([0.0, (0, 0, 0)])
 
     def handle_key_press(self, key):
-        if key == pygame.K_w:  # Cycle through weather
+        if key == pygame.K_w:
             weather_options = list(
                 self.environment_simulator.weather_probabilities.keys())
             current_index = weather_options.index(
@@ -47,7 +47,7 @@ class RestRecommendationSystem:
             next_index = (current_index + 1) % len(weather_options)
             self.driver_state.weather_condition = weather_options[next_index]
 
-        elif key == pygame.K_t:  # Cycle through traffic
+        elif key == pygame.K_t:
             traffic_options = list(
                 self.environment_simulator.traffic_probabilities.keys())
             current_index = traffic_options.index(
@@ -55,13 +55,13 @@ class RestRecommendationSystem:
             next_index = (current_index + 1) % len(traffic_options)
             self.driver_state.traffic_density = traffic_options[next_index]
 
-        elif key == pygame.K_d:  # Cycle through day/night
+        elif key == pygame.K_d:
             self.driver_state.time_of_day = "night" if self.driver_state.time_of_day == "day" else "day"
 
         elif key == pygame.K_f:
             self.simulators_running = not self.simulators_running
 
-        elif key == pygame.K_r:  # Cycle through road types
+        elif key == pygame.K_r:
             road_options = list(
                 self.environment_simulator.road_probabilities.keys())
             current_index = road_options.index(self.driver_state.road_type)
@@ -87,7 +87,6 @@ class RestRecommendationSystem:
             self.driver_state.time_of_day = self.environment_simulator.simulate_time_of_day(
                 self.driver_state.time_of_day, self.tick_count)
 
-        # Get biometric fatigue assessment
         biometric_fatigue, alarm_probability, alarm_triggered = self.biometric_detector.detect_fatigue(
             self.driver_state)
         if alarm_triggered:
@@ -101,11 +100,10 @@ class RestRecommendationSystem:
         self.current_alarm_state = alarm_triggered
         self.alarm_probability = alarm_probability
 
-        # Combine environmental and biometric fatigue factors
         combined_fatigue = (fatigue_level)
-        rest_loss = combined_fatigue * 2.5  # Scale fatigue to rest loss
+        rest_loss = combined_fatigue * 2.5
 
-        self.driver_state.current_rest_loss = rest_loss  # Store current rest loss
+        self.driver_state.current_rest_loss = rest_loss
         self.driver_state.rest_points -= rest_loss
         self.rest_points_history.append(self.driver_state.rest_points)
         alarm_color = (0, 255, 0) if self._is_alarm_valid() else (255, 0, 0)
@@ -131,8 +129,7 @@ class RestRecommendationSystem:
                          (start_x + width, threshold_y), 2)
 
         total_time_driven = self.tick_count * 5
-        x_tick_interval = max(1, int(total_time_driven / 10))
-        time_per_tick = 5  # Minutes per tick
+        time_per_tick = 5
         num_ticks = len(self.rest_points_history)
         point_spacing = width / (num_ticks - 1)
 
@@ -148,13 +145,11 @@ class RestRecommendationSystem:
                 None, 24).render(label_text, True, (0, 0, 0))
             screen.blit(label_surface, (x_pos - 10, y_label_pos))
 
-        # Draw Y-axis grid lines
         for i in range(0, 101, 20):
             y_pos = start_y + height - (height * i / 100)
             pygame.draw.line(screen, (200, 200, 200), (start_x, y_pos),
                              (start_x + width, y_pos), 1)
 
-        # Draw rest points history
         points = list(self.rest_points_history)
         coords = []
         for i, point in enumerate(points):
@@ -162,7 +157,6 @@ class RestRecommendationSystem:
             y = start_y + height - (height * point / 100)
             coords.append((x, y))
 
-        # Draw rest points line
         if len(coords) >= 2:
             pygame.draw.lines(screen, (0, 128, 0), False, coords, 2)
 
@@ -171,7 +165,7 @@ class RestRecommendationSystem:
             alarm_triggered, alarm_color = alarm
             if alarm_triggered > 0:
                 x = start_x + (i * point_spacing)
-                y = start_y + height - 20  # Position at bottom of graph
+                y = start_y + height - 20
                 pygame.draw.circle(screen, alarm_color, (int(x), int(y)), 2)
 
     def _is_alarm_valid(self):
@@ -183,7 +177,7 @@ class RestRecommendationSystem:
         while self.simulation_running:
             if not self.paused:
                 self.run_tick()
-            time.sleep(1/SIMULATION_TICK_RATE)  # 60 FPS
+            time.sleep(1/SIMULATION_TICK_RATE)
 
     def update_single_tick(self):
         if self.paused:
@@ -199,7 +193,6 @@ class RestRecommendationSystem:
         clock = pygame.time.Clock()
         font = pygame.font.Font(None, 36)
 
-        # Start simulation in a separate thread
         self.simulation_running = True
         self.simulation_thread = threading.Thread(
             target=self.update_simulation)
@@ -211,29 +204,24 @@ class RestRecommendationSystem:
                     if event.type == pygame.QUIT:
                         self.simulation_running = False
                     elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_RETURN:  # Enter key
+                        if event.key == pygame.K_RETURN:
                             self.toggle_simulation()
-                        elif event.key == pygame.K_SPACE:  # Space key
+                        elif event.key == pygame.K_SPACE:
                             self.update_single_tick()
                         else:
-                            # Handle custom key presses
                             self.handle_key_press(event.key)
 
                 screen.fill((255, 255, 255))
 
-                # Draw graph first
                 self.draw_graph(screen, 50, 50, 1100, 200)
 
-                # Draw rest points bar and related information
                 bar_y = 300
                 pygame.draw.rect(screen, (200, 200, 200), (50, bar_y, 200, 30))
                 pygame.draw.rect(screen, (0, 255, 0), (50, bar_y,
                                                        self.driver_state.rest_points * 2, 30))
 
-                # Display rest-related information
                 rest_info_texts = [
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
-                    # f"Current Rest Loss: {self.driver_state.current_rest_loss:.3f}/tick",
                     f"Rest Threshold: {self.rest_threshold}",
                     f"Last drive time: {self.driver_state.last_drive_tick_time*5//60}h {self.driver_state.last_drive_tick_time*5%60}m",
                 ]
@@ -246,7 +234,6 @@ class RestRecommendationSystem:
                     f"{'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
                 screen.blit(state_text, (50, bar_y + 100))
 
-                # Display other information
                 texts = [
                     f"Tick: {self.tick_count}",
                     f"{self.driver_state.heart_rate:.1f} BPM, {self.driver_state.hrv:.1f} HRV, {self.driver_state.eda:.1f} μS",

@@ -20,7 +20,6 @@ class BiometricFatigueDetector:
             ('PERCLOS', 'Fatigue'),
             ('BlinkDuration', 'Fatigue'),
             ('BlinkRate', 'Fatigue'),
-            ('Fatigue', 'Alarm')
         ])
 
         # CPDs for biometric measurements with multiple states based on simulator ranges
@@ -94,31 +93,19 @@ class BiometricFatigueDetector:
             fatigue_probs,
             evidence=['HeartRate', 'HRV', 'EDA',
                       'PERCLOS', 'BlinkDuration', 'BlinkRate'],
-            # All variables now have 4 states
             evidence_card=[4, 4, 4, 4, 4, 4]
         )
 
-        # Alarm CPD with more aggressive response to fatigue
-        cpd_alarm = TabularCPD(
-            'Alarm', 2,
-            [[0.95, 0.2],   # No alarm probabilities when not fatigued/fatigued
-             [0.05, 0.8]],  # Alarm probabilities when not fatigued/fatigued
-            evidence=['Fatigue'],
-            evidence_card=[2]
-        )
-
         self.model.add_cpds(cpd_heart_rate, cpd_hrv, cpd_eda, cpd_perclos,
-                            cpd_blink_duration, cpd_blink_rate, cpd_fatigue, cpd_alarm)
+                            cpd_blink_duration, cpd_blink_rate, cpd_fatigue)
         self.inference = VariableElimination(self.model)
 
     def _calculate_fatigue_probabilities(self, cpds, weights):
         """Calculate fatigue probabilities based on input CPDs and weights"""
-        # All variables now have 4 states
-        cards = [4, 4, 4, 4, 4, 4]  # Cardinality of each node
+        cards = [4, 4, 4, 4, 4, 4]
         num_combinations = np.prod(cards)  # Should be 4096 (4^6)
         probs = np.zeros((2, num_combinations))
 
-        # Helper function to convert flat index to state indices
         def index_to_states(idx, cards):
             states = []
             for card in reversed(cards):
@@ -126,40 +113,22 @@ class BiometricFatigueDetector:
                 idx //= card
             return list(reversed(states))
 
-        # Weights for each state (Normal->Very Fatigued) - more aggressive progression
         state_weights = [0.1, 0.5, 0.8, 1.0]
 
         for i in range(num_combinations):
             states = index_to_states(i, cards)
-
-            # Calculate fatigue contribution from each metric
             fatigue_contrib = 0.0
 
-            # Heart Rate contribution
             fatigue_contrib += state_weights[states[0]] * weights['heart_rate']
-
-            # HRV contribution
             fatigue_contrib += state_weights[states[1]] * weights['hrv']
-
-            # EDA contribution
             fatigue_contrib += state_weights[states[2]] * weights['eda']
-
-            # PERCLOS contribution
             fatigue_contrib += state_weights[states[3]] * weights['perclos']
-
-            # Blink Duration contribution
             fatigue_contrib += state_weights[states[4]
                                              ] * weights['blink_duration']
-
-            # Blink Rate contribution
             fatigue_contrib += state_weights[states[5]] * weights['blink_rate']
-
-            # Normalize and store probabilities
             fatigue_prob = min(1.0, fatigue_contrib)
-            probs[0, i] = 1 - fatigue_prob  # Not fatigued
-            probs[1, i] = fatigue_prob      # Fatigued
-
-        return probs
+            probs[0, i] = 1 - fatigue_prob
+            probs[1, i] = fatigue_prob
 
         return probs
 
@@ -167,7 +136,6 @@ class BiometricFatigueDetector:
         """Convert biometric measurements to discrete states"""
         states = {}
 
-        # Heart Rate (4 states based on simulator ranges) - adjusted thresholds
         if driver_state.heart_rate >= 72:
             states['HeartRate'] = 0  # Normal/Rested
         elif driver_state.heart_rate >= 67 and driver_state.heart_rate < 72:
@@ -177,7 +145,6 @@ class BiometricFatigueDetector:
         else:
             states['HeartRate'] = 3  # Very Fatigued
 
-        # HRV (4 states based on simulator ranges) - adjusted thresholds
         if driver_state.hrv >= 45:
             states['HRV'] = 0  # Normal/Rested
         elif driver_state.hrv >= 35 and driver_state.hrv < 45:
@@ -187,7 +154,6 @@ class BiometricFatigueDetector:
         else:
             states['HRV'] = 3  # Very Fatigued
 
-        # EDA (4 states based on simulator ranges)
         if driver_state.eda >= 6 and driver_state.eda <= 8:
             states['EDA'] = 0  # Normal/Rested
         elif driver_state.eda >= 4 and driver_state.eda < 6:
@@ -197,7 +163,6 @@ class BiometricFatigueDetector:
         else:
             states['EDA'] = 3  # Very Fatigued
 
-        # PERCLOS (4 states based on simulator ranges) - more sensitive thresholds
         if driver_state.perclos < 0.15:
             states['PERCLOS'] = 0  # Normal/Rested
         elif driver_state.perclos >= 0.15 and driver_state.perclos < 0.25:
@@ -207,7 +172,6 @@ class BiometricFatigueDetector:
         else:
             states['PERCLOS'] = 3  # Very Fatigued
 
-        # Blink Duration (4 states based on simulator ranges)
         if driver_state.blink_duration >= 150 and driver_state.blink_duration <= 250:
             states['BlinkDuration'] = 0  # Normal/Rested
         elif driver_state.blink_duration > 250 and driver_state.blink_duration <= 350:
@@ -217,7 +181,6 @@ class BiometricFatigueDetector:
         else:
             states['BlinkDuration'] = 3  # Very Fatigued
 
-        # Blink Rate (4 states based on simulator ranges)
         if driver_state.blink_rate >= 10 and driver_state.blink_rate <= 14:
             states['BlinkRate'] = 0  # Normal/Rested
         elif driver_state.blink_rate > 14 and driver_state.blink_rate <= 18:
@@ -226,7 +189,6 @@ class BiometricFatigueDetector:
             states['BlinkRate'] = 2  # Fatigued
         else:
             states['BlinkRate'] = 3  # Very Fatigued
-
         return states
 
     def detect_fatigue(self, driver_state):
@@ -236,13 +198,12 @@ class BiometricFatigueDetector:
         """
         states = self._get_biometric_states(driver_state)
 
-        # Set evidence states based on continuous probabilities
         evidence = {
             metric: 1 if prob > 0.5 else 0
             for metric, prob in states.items()
         }
 
         fatigue_result = self.inference.query(['Fatigue'], evidence=evidence)
-        fatigue_prob = fatigue_result.values[1]  # Probability of high fatigue
+        fatigue_prob = fatigue_result.values[1]
 
         return fatigue_prob, fatigue_prob, fatigue_prob >= self.ALARM_THRESHOLD
