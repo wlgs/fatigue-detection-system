@@ -270,5 +270,5 @@ class RestRecommendationSystem:
 
 
 if __name__ == "__main__":
-    system = RestRecommendationSystem("worst")
+    system = RestRecommendationSystem("normal")
     system.start()

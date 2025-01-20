@@ -25,60 +25,60 @@ class BiometricFatigueDetector:
         # CPDs for biometric measurements with multiple states based on simulator ranges
         cpd_heart_rate = TabularCPD(
             'HeartRate', 4, [
-                [0.4],  # Normal/Rested (70-80 bpm)
-                [0.3],  # Slightly Fatigued (65-70 bpm)
-                [0.2],  # Fatigued (60-65 bpm)
-                [0.1]   # Very Fatigued (<60 bpm)
+                [0.1],  # Normal/Rested (70-80 bpm)
+                [0.2],  # Slightly Fatigued (65-70 bpm)
+                [0.3],  # Fatigued (60-65 bpm)
+                [0.4]   # Very Fatigued (<60 bpm)
             ])
 
         cpd_hrv = TabularCPD(
             'HRV', 4, [
-                [0.4],  # Normal/Rested (45-55 ms)
-                [0.3],  # Slightly Fatigued (35-45 ms)
-                [0.2],  # Fatigued (25-35 ms)
-                [0.1]   # Very Fatigued (<25 ms)
+                [0.1],  # Normal/Rested (45-55 ms)
+                [0.2],  # Slightly Fatigued (35-45 ms)
+                [0.3],  # Fatigued (25-35 ms)
+                [0.4]   # Very Fatigued (<25 ms)
             ])
 
         cpd_eda = TabularCPD(
             'EDA', 4, [
-                [0.4],  # Normal/Rested (6-8 μS)
-                [0.3],  # Slightly Fatigued (4-6 μS)
-                [0.2],  # Fatigued (2-4 μS)
-                [0.1]   # Very Fatigued (<2 μS)
+                [0.1],  # Normal/Rested (6-8 μS)
+                [0.2],  # Slightly Fatigued (4-6 μS)
+                [0.3],  # Fatigued (2-4 μS)
+                [0.4]   # Very Fatigued (<2 μS)
             ])
 
         cpd_perclos = TabularCPD(
             'PERCLOS', 4, [
-                [0.4],  # Normal/Rested (0.10-0.20)
-                [0.3],  # Slightly Fatigued (0.20-0.30)
-                [0.2],  # Fatigued (0.30-0.40)
-                [0.1]   # Very Fatigued (>0.40)
+                [0.1],  # Normal/Rested (0.10-0.20)
+                [0.2],  # Slightly Fatigued (0.20-0.30)
+                [0.3],  # Fatigued (0.30-0.40)
+                [0.4]   # Very Fatigued (>0.40)
             ])
 
         cpd_blink_duration = TabularCPD(
             'BlinkDuration', 4, [
-                [0.4],  # Normal/Rested (150-250 ms)
-                [0.3],  # Slightly Fatigued (250-350 ms)
-                [0.2],  # Fatigued (350-450 ms)
-                [0.1]   # Very Fatigued (>450 ms)
+                [0.1],  # Normal/Rested (150-250 ms)
+                [0.2],  # Slightly Fatigued (250-350 ms)
+                [0.3],  # Fatigued (350-450 ms)
+                [0.4]   # Very Fatigued (>450 ms)
             ])
 
         cpd_blink_rate = TabularCPD(
             'BlinkRate', 4, [
-                [0.4],  # Normal/Rested (10-14 bpm)
-                [0.3],  # Slightly Fatigued (14-18 bpm)
-                [0.2],  # Fatigued (18-22 bpm)
-                [0.1]   # Very Fatigued (>22 bpm)
+                [0.1],  # Normal/Rested (10-14 bpm)
+                [0.2],  # Slightly Fatigued (14-18 bpm)
+                [0.3],  # Fatigued (18-22 bpm)
+                [0.4]   # Very Fatigued (>22 bpm)
             ])
 
         # Weights for biometric factors - adjusted to emphasize important indicators
         WEIGHTS = {
-            'heart_rate': 0.15,
-            'hrv': 0.25,        # Increased - strong indicator
-            'eda': 0.10,        # Decreased - less reliable
-            'perclos': 0.3,    # Increased - strong indicator
-            'blink_duration': 0.15,
-            'blink_rate': 0.10  # Decreased - more variable
+            'heart_rate': 0.5,
+            'hrv': 0.5,        # Increased - strong indicator
+            'eda': 0.5,        # Decreased - less reliable
+            'perclos': 0.5,    # Increased - strong indicator
+            'blink_duration': 0.5,
+            'blink_rate': 0.5  # Decreased - more variable
         }
 
         # Calculate fatigue probabilities
@@ -113,19 +113,23 @@ class BiometricFatigueDetector:
                 idx //= card
             return list(reversed(states))
 
-        state_weights = [0.1, 0.5, 0.8, 1.0]
-
         for i in range(num_combinations):
             states = index_to_states(i, cards)
             fatigue_contrib = 0.0
 
-            fatigue_contrib += state_weights[states[0]] * weights['heart_rate']
-            fatigue_contrib += state_weights[states[1]] * weights['hrv']
-            fatigue_contrib += state_weights[states[2]] * weights['eda']
-            fatigue_contrib += state_weights[states[3]] * weights['perclos']
-            fatigue_contrib += state_weights[states[4]
-                                             ] * weights['blink_duration']
-            fatigue_contrib += state_weights[states[5]] * weights['blink_rate']
+            fatigue_contrib += float(cpds[0].get_values()
+                                     [states[0]]) * weights['heart_rate']
+            fatigue_contrib += float(cpds[1].get_values()
+                                     [states[1]]) * weights['hrv']
+            fatigue_contrib += float(cpds[2].get_values()
+                                     [states[2]]) * weights['eda']
+            fatigue_contrib += float(cpds[3].get_values()
+                                     [states[3]]) * weights['perclos']
+            fatigue_contrib += float(cpds[4].get_values()
+                                     [states[4]]) * weights['blink_duration']
+            fatigue_contrib += float(cpds[5].get_values()
+                                     [states[5]]) * weights['blink_rate']
+
             fatigue_prob = min(1.0, fatigue_contrib)
             probs[0, i] = 1 - fatigue_prob
             probs[1, i] = fatigue_prob
