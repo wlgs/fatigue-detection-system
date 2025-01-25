@@ -9,14 +9,14 @@ from modules.FatigueEvaluator import FatigueEvaluator
 from modules.BiometricFatigueDetector import BiometricFatigueDetector
 
 SIMULATION_DISPLAY_TARGET_FPS = 30
-SIMULATION_TICK_RATE = 5000
+SIMULATION_TICK_RATE = 120
 
 
 class RestRecommendationSystem:
-    def __init__(self, scenario=None):
+    def __init__(self, scenario=None, driver_scenario=None):
         self.driver_state = DriverState(scenario=scenario)
         self.environment_simulator = EnvironmentSimulator()
-        self.driver_simulator = DriverSimulator()
+        self.driver_simulator = DriverSimulator(characteristic=driver_scenario)
         self.fatigue_evaluator = FatigueEvaluator()
         self.biometric_detector = BiometricFatigueDetector()
         self.alarm_probability = 0.0
@@ -237,7 +237,8 @@ class RestRecommendationSystem:
 
             # Draw metric name
             text = font.render(f"{name}", True, (0, 0, 0))
-            metric_value = font.render(f"{metric['value']:.2f} {metric['unit']}", True, (0, 0, 0))
+            metric_value = font.render(
+                f"{metric['value']:.2f} {metric['unit']}", True, (0, 0, 0))
             screen.blit(text, (start_x, y))
             screen.blit(metric_value, (start_x + 125, y))
 
@@ -269,14 +270,17 @@ class RestRecommendationSystem:
             weight_width = 180
             pygame.draw.rect(screen, (220, 220, 220),
                              (weight_start_x, y, weight_width, bar_height))
-            weight_value_width = min(int(weight_width * metric['weight'] * 2), 180) # SCALED TIMES 2 FOR VISIBILITY
+            # SCALED TIMES 2 FOR VISIBILITY
+            weight_value_width = min(
+                int(weight_width * metric['weight'] * 2), 180)
             pygame.draw.rect(screen, (0, 0, 255),
                              (weight_start_x, y, weight_value_width, bar_height))
 
             # value_text = f"{metric['value']:.2f} -> {metric['weight']:.2f}"
             # text = font.render(value_text, True, (0, 0, 0))
             # screen.blit(text, (weight_start_x + weight_width + 10, y))
-        text = font.render(f"Calculated impact: {self.alarm_probability:.2f}/{self.biometric_detector.ALARM_THRESHOLD}", True, (0, 0, 0))
+        text = font.render(
+            f"Calculated impact: {self.alarm_probability:.2f}/{self.biometric_detector.ALARM_THRESHOLD}", True, (0, 0, 0))
         screen.blit(text, (start_x+width-230, start_y+height-40))
 
     def _is_alarm_valid(self):
@@ -385,5 +389,5 @@ class RestRecommendationSystem:
 
 
 if __name__ == "__main__":
-    system = RestRecommendationSystem("normal")
+    system = RestRecommendationSystem("normal", "low_heart_rate")
     system.start()
