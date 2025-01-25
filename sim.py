@@ -178,42 +178,48 @@ class RestRecommendationSystem:
             'HeartRate': {
                 'value': self.driver_state.heart_rate,
                 'weight': fatigue_contributors['HeartRate'],
-                'normal': (72, 80),
+                'unit': 'BPM',
+                'normal': (72, 86),
                 'fatigued': (55, 62),
                 'color': (0, 150, 255)
             },
             'HRV': {
                 'value': self.driver_state.hrv,
                 'weight': fatigue_contributors['HRV'],
-                'normal': (45, 55),
+                'unit': '',
+                'normal': (45, 60),
                 'fatigued': (15, 25),
                 'color': (255, 150, 0)
             },
             'EDA': {
                 'value': self.driver_state.eda,
                 'weight': fatigue_contributors['EDA'],
-                'normal': (6, 8),
+                'unit': 'uS',
+                'normal': (6, 10),
                 'fatigued': (1, 2),
                 'color': (150, 255, 0)
             },
             'PERCLOS': {
                 'value': self.driver_state.perclos,
                 'weight': fatigue_contributors['PERCLOS'],
-                'normal': (0.1, 0.15),
+                'unit': '',
+                'normal': (0.05, 0.15),
                 'fatigued': (0.35, 0.5),
                 'color': (255, 0, 150)
             },
             'BlinkDuration': {
                 'value': self.driver_state.blink_duration,
                 'weight': fatigue_contributors['BlinkDuration'],
-                'normal': (150, 250),
+                'unit': 'ms',
+                'normal': (50, 250),
                 'fatigued': (450, 600),
                 'color': (150, 0, 255)
             },
             'BlinkRate': {
                 'value': self.driver_state.blink_rate,
                 'weight': fatigue_contributors['BlinkRate'],
-                'normal': (10, 14),
+                'unit': '/min',
+                'normal': (8, 14),
                 'fatigued': (22, 30),
                 'color': (255, 255, 0)
             }
@@ -224,18 +230,20 @@ class RestRecommendationSystem:
         total_height = (bar_height + spacing) * len(metrics)
         start_y = start_y + (height - total_height) // 2
 
-        font = pygame.font.Font(None, 24)
+        font = pygame.font.SysFont("monospace", 14)
 
         for i, (name, metric) in enumerate(metrics.items()):
             y = start_y + i * (bar_height + spacing)
 
             # Draw metric name
-            text = font.render(name, True, (0, 0, 0))
+            text = font.render(f"{name}", True, (0, 0, 0))
+            metric_value = font.render(f"{metric['value']:.2f} {metric['unit']}", True, (0, 0, 0))
             screen.blit(text, (start_x, y))
+            screen.blit(metric_value, (start_x + 125, y))
 
             # Calculate bar position and width
-            bar_start_x = start_x + 150
-            bar_width = width - 250
+            bar_start_x = start_x + 220
+            bar_width = width - 420
 
             # Draw background bar
             pygame.draw.rect(screen, (220, 220, 220),
@@ -253,14 +261,23 @@ class RestRecommendationSystem:
 
             norm_value = max(0, min(1, norm_value))
 
-            # Draw value bar
             value_width = int(bar_width * norm_value)
             pygame.draw.rect(screen, metric['color'],
                              (bar_start_x, y, value_width, bar_height))
 
-            value_text = f"{metric['value']:.2f} -> {metric['weight']}"
-            text = font.render(value_text, True, (0, 0, 0))
-            screen.blit(text, (bar_start_x + bar_width + 10, y))
+            weight_start_x = bar_start_x + bar_width + 10
+            weight_width = 180
+            pygame.draw.rect(screen, (220, 220, 220),
+                             (weight_start_x, y, weight_width, bar_height))
+            weight_value_width = min(int(weight_width * metric['weight'] * 2), 180) # SCALED TIMES 2 FOR VISIBILITY
+            pygame.draw.rect(screen, (0, 0, 255),
+                             (weight_start_x, y, weight_value_width, bar_height))
+
+            # value_text = f"{metric['value']:.2f} -> {metric['weight']:.2f}"
+            # text = font.render(value_text, True, (0, 0, 0))
+            # screen.blit(text, (weight_start_x + weight_width + 10, y))
+        text = font.render(f"Calculated impact: {self.alarm_probability:.2f}/{self.biometric_detector.ALARM_THRESHOLD}", True, (0, 0, 0))
+        screen.blit(text, (start_x+width-230, start_y+height-40))
 
     def _is_alarm_valid(self):
         if self.driver_state.rest_points <= self.valid_alarm_threshold:
@@ -285,7 +302,7 @@ class RestRecommendationSystem:
         screen = pygame.display.set_mode((1200, 900))
         pygame.display.set_caption("Driver Rest Recommendation System")
         clock = pygame.time.Clock()
-        font = pygame.font.Font(None, 36)
+        font = pygame.font.SysFont("monospace", 18, bold=True)
 
         self.simulation_running = True
         self.simulation_thread = threading.Thread(
@@ -309,12 +326,11 @@ class RestRecommendationSystem:
 
                 self.draw_graph(screen, 50, 50, 1100, 200)
 
-                self.draw_biometric_bars(screen, 560, 500, 600, 300)
+                self.draw_biometric_bars(screen, 360, 300, 750, 250)
 
                 bar_y = 300
-                pygame.draw.rect(screen, (200, 200, 200), (50, bar_y, 200, 30))
-                pygame.draw.rect(screen, (0, 255, 0), (50, bar_y,
-                                                       self.driver_state.rest_points * 2, 30))
+                # pygame.draw.rect(screen, (200, 200, 200), (50, bar_y, 200, 30))
+                # pygame.draw.rect(screen, (0, 255, 0), (50, bar_y, self.driver_state.rest_points * 2, 30))
 
                 rest_info_texts = [
                     f"Rest Points: {self.driver_state.rest_points:.1f}",
@@ -324,7 +340,7 @@ class RestRecommendationSystem:
 
                 for i, text in enumerate(rest_info_texts):
                     surface = font.render(text, True, (0, 0, 0))
-                    screen.blit(surface, (270, bar_y + i * 30))
+                    screen.blit(surface, (50, bar_y + i * 30))
 
                 state_text = font.render(
                     f"{'Running' if not self.paused else 'Paused'}", True, (0, 0, 255))
@@ -332,14 +348,17 @@ class RestRecommendationSystem:
 
                 texts = [
                     f"Tick: {self.tick_count}",
-                    f"{self.driver_state.heart_rate:.1f} BPM, {self.driver_state.hrv:.1f} HRV, {self.driver_state.eda:.1f} μS",
-                    f"{self.driver_state.perclos:.2f} PERCLOS, {self.driver_state.blink_duration:.1f} ms, {self.driver_state.blink_rate:.1f} blinks/min",
-                    f"[D] Time of Day: {self.driver_state.time_of_day} [W] Weather: {self.driver_state.weather_condition}",
-                    f"[T] Traffic: {self.driver_state.traffic_density} [R] Road Type: {self.driver_state.road_type}",
+                    # f"{self.driver_state.heart_rate:.1f} BPM, {self.driver_state.hrv:.1f} HRV, {self.driver_state.eda:.1f} μS",
+                    # f"{self.driver_state.perclos:.2f} PERCLOS, {self.driver_state.blink_duration:.1f} ms, {self.driver_state.blink_rate:.1f} blinks/min",
+                    f"[D] Time of Day: {self.driver_state.time_of_day}",
+                    f"[W] Weather: {self.driver_state.weather_condition}",
+                    f"[T] Traffic: {self.driver_state.traffic_density}",
+                    f"[R] Road Type: {self.driver_state.road_type}",
                     f"[F] Simulators: { 'Running' if self.simulators_running else 'Paused'}",
-                    f"Predicted Fatigue: {self.alarm_probability:.2f}/{self.biometric_detector.ALARM_THRESHOLD}",
+                    # f"Predicted Fatigue: {self.alarm_probability:.2f}/{self.biometric_detector.ALARM_THRESHOLD}",
                     f"FATIGUE ALARM: {'ACTIVE' if self.current_alarm_state else 'OFF'}",
-                    f"Valid / Missed / Total: {self.valid_alarms_count} / {self.missed_alarms_count} / {self.total_alarms_count}  -  ACC: {self.valid_alarms_count/((self.total_alarms_count if self.total_alarms_count > 0 else 1) + (self.missed_alarms_count if self.missed_alarms_count > 0 else 1))*100:.2f}%",
+                    f"Valid / Missed / Total: {self.valid_alarms_count} / {self.missed_alarms_count} / {self.total_alarms_count}",
+                    f"ACC: {self.valid_alarms_count/((self.total_alarms_count if self.total_alarms_count > 0 else 1) + (self.missed_alarms_count if self.missed_alarms_count > 0 else 1))*100:.2f}%"
                 ]
 
                 # Render the texts

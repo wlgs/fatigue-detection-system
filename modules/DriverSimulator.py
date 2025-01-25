@@ -101,7 +101,7 @@ class DriverSimulator:
         """Reset physiological values to normal after rest"""
         driver_state.heart_rate = 75.0
         driver_state.hrv = 50.0
-        driver_state.eda = 7.0
-        driver_state.perclos = 0.15
+        driver_state.eda = 6.0
+        driver_state.perclos = 0.10
         driver_state.blink_duration = 200.0
         driver_state.blink_rate = 12.0

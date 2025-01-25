@@ -18,15 +18,23 @@ class BiometricFatigueDetector:
             'BlinkRate': 0
         }
         self.WEIGHTS = {
-            'HeartRate': 0.25,
-            'HRV': 0.25,
-            'EDA': 0.5,
-            'PERCLOS': 2,
-            'BlinkDuration': 2,
-            'BlinkRate': 1
+            'HeartRate': 1,
+            'HRV': 1,
+            'EDA': 1,
+            'PERCLOS': 4,
+            'BlinkDuration': 4,
+            'BlinkRate': 2
         }
+        self._normalize_weights()
+
+
         self.setup_bayesian_network()
-        self.ALARM_THRESHOLD = 0.55
+        self.ALARM_THRESHOLD = 0.60
+
+    def _normalize_weights(self):
+        total_weight = sum(self.WEIGHTS.values())
+        for key in self.WEIGHTS:
+            self.WEIGHTS[key] /= total_weight
 
     def getBiometricFatigueContributors(self):
         return self.tick_fatigue_contributors
@@ -124,7 +132,7 @@ class BiometricFatigueDetector:
                 idx //= card
             return list(reversed(states))
 
-        FATIGUE_PROB_FACTOR_MULTIPLIER = 0.7
+        FATIGUE_PROB_FACTOR_MULTIPLIER = 4.5
         for i in range(num_combinations):
             states = index_to_states(i, cards)
             fatigue_contrib = 0.0
@@ -203,17 +211,15 @@ class BiometricFatigueDetector:
         Returns: (fatigue_level, alarm_probability, alarm_triggered)
         """
         states = self._get_biometric_states(driver_state)
-
         evidence = {
-            metric: 1 if prob > 0.5 else 0
-            for metric, prob in states.items()
+            metric: prob for metric, prob in states.items()
         }
 
         fatigue_result = self.inference.query(['Fatigue'], evidence=evidence)
         # get values of individual states and put them in a dictionary
         for metric, state in states.items():
             cpd = self.model.get_cpds(metric)
-            self.tick_fatigue_contributors[metric] = float(cpd.values[state]) * self.WEIGHTS[metric]
+            self.tick_fatigue_contributors[metric] = float(cpd.values[state]) * self.WEIGHTS[metric] * 4.5
         fatigue_prob = fatigue_result.values[1]
 
         return fatigue_prob, fatigue_prob, fatigue_prob >= self.ALARM_THRESHOLD
