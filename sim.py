@@ -168,8 +168,102 @@ class RestRecommendationSystem:
                 y = start_y + height - 20
                 pygame.draw.circle(screen, alarm_color, (int(x), int(y)), 2)
 
+    def draw_biometric_bars(self, screen, start_x, start_y, width, height):
+        """Draw bars showing contribution of each biometric metric to fatigue detection"""
+        pygame.draw.rect(screen, (240, 240, 240),
+                         (start_x, start_y, width, height))
+
+        fatigue_contributors = self.biometric_detector.getBiometricFatigueContributors()
+        metrics = {
+            'HeartRate': {
+                'value': self.driver_state.heart_rate,
+                'weight': fatigue_contributors['HeartRate'],
+                'normal': (72, 80),
+                'fatigued': (55, 62),
+                'color': (0, 150, 255)
+            },
+            'HRV': {
+                'value': self.driver_state.hrv,
+                'weight': fatigue_contributors['HRV'],
+                'normal': (45, 55),
+                'fatigued': (15, 25),
+                'color': (255, 150, 0)
+            },
+            'EDA': {
+                'value': self.driver_state.eda,
+                'weight': fatigue_contributors['EDA'],
+                'normal': (6, 8),
+                'fatigued': (1, 2),
+                'color': (150, 255, 0)
+            },
+            'PERCLOS': {
+                'value': self.driver_state.perclos,
+                'weight': fatigue_contributors['PERCLOS'],
+                'normal': (0.1, 0.15),
+                'fatigued': (0.35, 0.5),
+                'color': (255, 0, 150)
+            },
+            'BlinkDuration': {
+                'value': self.driver_state.blink_duration,
+                'weight': fatigue_contributors['BlinkDuration'],
+                'normal': (150, 250),
+                'fatigued': (450, 600),
+                'color': (150, 0, 255)
+            },
+            'BlinkRate': {
+                'value': self.driver_state.blink_rate,
+                'weight': fatigue_contributors['BlinkRate'],
+                'normal': (10, 14),
+                'fatigued': (22, 30),
+                'color': (255, 255, 0)
+            }
+        }
+
+        bar_height = 25
+        spacing = 10
+        total_height = (bar_height + spacing) * len(metrics)
+        start_y = start_y + (height - total_height) // 2
+
+        font = pygame.font.Font(None, 24)
+
+        for i, (name, metric) in enumerate(metrics.items()):
+            y = start_y + i * (bar_height + spacing)
+
+            # Draw metric name
+            text = font.render(name, True, (0, 0, 0))
+            screen.blit(text, (start_x, y))
+
+            # Calculate bar position and width
+            bar_start_x = start_x + 150
+            bar_width = width - 250
+
+            # Draw background bar
+            pygame.draw.rect(screen, (220, 220, 220),
+                             (bar_start_x, y, bar_width, bar_height))
+
+            # Calculate normalized value between 0 and 1
+            if name == 'PERCLOS' or metric['fatigued'][1] > metric['normal'][1]:
+                # Metrics that increase with fatigue
+                norm_value = (metric['value'] - metric['normal'][0]) / \
+                    (metric['fatigued'][1] - metric['normal'][0])
+            else:
+                # Metrics that decrease with fatigue
+                norm_value = 1 - (metric['value'] - metric['fatigued'][0]) / \
+                    (metric['normal'][1] - metric['fatigued'][0])
+
+            norm_value = max(0, min(1, norm_value))
+
+            # Draw value bar
+            value_width = int(bar_width * norm_value)
+            pygame.draw.rect(screen, metric['color'],
+                             (bar_start_x, y, value_width, bar_height))
+
+            value_text = f"{metric['value']:.2f} -> {metric['weight']}"
+            text = font.render(value_text, True, (0, 0, 0))
+            screen.blit(text, (bar_start_x + bar_width + 10, y))
+
     def _is_alarm_valid(self):
-        if self.driver_state.rest_points < self.valid_alarm_threshold:
+        if self.driver_state.rest_points <= self.valid_alarm_threshold:
             return True
         return False
 
@@ -214,6 +308,8 @@ class RestRecommendationSystem:
                 screen.fill((255, 255, 255))
 
                 self.draw_graph(screen, 50, 50, 1100, 200)
+
+                self.draw_biometric_bars(screen, 560, 500, 600, 300)
 
                 bar_y = 300
                 pygame.draw.rect(screen, (200, 200, 200), (50, bar_y, 200, 30))

@@ -9,8 +9,27 @@ class BiometricFatigueDetector:
     """Detects driver fatigue based on biometric measurements using Bayesian networks"""
 
     def __init__(self):
+        self.tick_fatigue_contributors = {
+            'HeartRate': 0,
+            'HRV': 0,
+            'EDA': 0,
+            'PERCLOS': 0,
+            'BlinkDuration': 0,
+            'BlinkRate': 0
+        }
+        self.WEIGHTS = {
+            'HeartRate': 0.25,
+            'HRV': 0.25,
+            'EDA': 0.5,
+            'PERCLOS': 2,
+            'BlinkDuration': 2,
+            'BlinkRate': 1
+        }
         self.setup_bayesian_network()
-        self.ALARM_THRESHOLD = 0.5  # Lower threshold for earlier warnings
+        self.ALARM_THRESHOLD = 0.55
+
+    def getBiometricFatigueContributors(self):
+        return self.tick_fatigue_contributors
 
     def setup_bayesian_network(self):
         self.model = BayesianNetwork([
@@ -49,43 +68,35 @@ class BiometricFatigueDetector:
 
         cpd_perclos = TabularCPD(
             'PERCLOS', 4, [
-                [0.1],  # Normal/Rested (0.10-0.20)
-                [0.2],  # Slightly Fatigued (0.20-0.30)
-                [0.3],  # Fatigued (0.30-0.40)
-                [0.4]   # Very Fatigued (>0.40)
+                [0.05],  # Normal/Rested (0.10-0.20)
+                [0.1],  # Slightly Fatigued (0.20-0.30)
+                [0.25],  # Fatigued (0.30-0.40)
+                [0.6]   # Very Fatigued (>0.40)
             ])
 
         cpd_blink_duration = TabularCPD(
             'BlinkDuration', 4, [
-                [0.1],  # Normal/Rested (150-250 ms)
-                [0.2],  # Slightly Fatigued (250-350 ms)
-                [0.3],  # Fatigued (350-450 ms)
-                [0.4]   # Very Fatigued (>450 ms)
+                [0.05],  # Normal/Rested (150-250 ms)
+                [0.15],  # Slightly Fatigued (250-350 ms)
+                [0.25],  # Fatigued (350-450 ms)
+                [0.55]   # Very Fatigued (>450 ms)
             ])
 
         cpd_blink_rate = TabularCPD(
             'BlinkRate', 4, [
-                [0.1],  # Normal/Rested (10-14 bpm)
-                [0.2],  # Slightly Fatigued (14-18 bpm)
+                [0.05],  # Normal/Rested (10-14 bpm)
+                [0.1],  # Slightly Fatigued (14-18 bpm)
                 [0.3],  # Fatigued (18-22 bpm)
-                [0.4]   # Very Fatigued (>22 bpm)
+                [0.55]   # Very Fatigued (>22 bpm)
             ])
 
         # Weights for biometric factors - adjusted to emphasize important indicators
-        WEIGHTS = {
-            'heart_rate': 0.5,
-            'hrv': 0.5,        # Increased - strong indicator
-            'eda': 0.5,        # Decreased - less reliable
-            'perclos': 0.5,    # Increased - strong indicator
-            'blink_duration': 0.5,
-            'blink_rate': 0.5  # Decreased - more variable
-        }
 
         # Calculate fatigue probabilities
         fatigue_probs = self._calculate_fatigue_probabilities(
             [cpd_heart_rate, cpd_hrv, cpd_eda, cpd_perclos,
                 cpd_blink_duration, cpd_blink_rate],
-            WEIGHTS
+            self.WEIGHTS
         )
 
         cpd_fatigue = TabularCPD(
@@ -113,23 +124,14 @@ class BiometricFatigueDetector:
                 idx //= card
             return list(reversed(states))
 
+        FATIGUE_PROB_FACTOR_MULTIPLIER = 0.7
         for i in range(num_combinations):
             states = index_to_states(i, cards)
             fatigue_contrib = 0.0
 
-            fatigue_contrib += float(cpds[0].get_values()
-                                     [states[0]]) * weights['heart_rate']
-            fatigue_contrib += float(cpds[1].get_values()
-                                     [states[1]]) * weights['hrv']
-            fatigue_contrib += float(cpds[2].get_values()
-                                     [states[2]]) * weights['eda']
-            fatigue_contrib += float(cpds[3].get_values()
-                                     [states[3]]) * weights['perclos']
-            fatigue_contrib += float(cpds[4].get_values()
-                                     [states[4]]) * weights['blink_duration']
-            fatigue_contrib += float(cpds[5].get_values()
-                                     [states[5]]) * weights['blink_rate']
-
+            for j, cpd in enumerate(cpds):
+                fatigue_value = float(cpd.get_values()[states[j]]) * weights[list(weights.keys())[j]]
+                fatigue_contrib += fatigue_value * FATIGUE_PROB_FACTOR_MULTIPLIER
             fatigue_prob = min(1.0, fatigue_contrib)
             probs[0, i] = 1 - fatigue_prob
             probs[1, i] = fatigue_prob
@@ -176,7 +178,7 @@ class BiometricFatigueDetector:
         else:
             states['PERCLOS'] = 3  # Very Fatigued
 
-        if driver_state.blink_duration >= 150 and driver_state.blink_duration <= 250:
+        if driver_state.blink_duration >= 0 and driver_state.blink_duration <= 250:
             states['BlinkDuration'] = 0  # Normal/Rested
         elif driver_state.blink_duration > 250 and driver_state.blink_duration <= 350:
             states['BlinkDuration'] = 1  # Slightly Fatigued
@@ -185,7 +187,7 @@ class BiometricFatigueDetector:
         else:
             states['BlinkDuration'] = 3  # Very Fatigued
 
-        if driver_state.blink_rate >= 10 and driver_state.blink_rate <= 14:
+        if driver_state.blink_rate >= 0 and driver_state.blink_rate <= 14:
             states['BlinkRate'] = 0  # Normal/Rested
         elif driver_state.blink_rate > 14 and driver_state.blink_rate <= 18:
             states['BlinkRate'] = 1  # Slightly Fatigued
@@ -208,6 +210,10 @@ class BiometricFatigueDetector:
         }
 
         fatigue_result = self.inference.query(['Fatigue'], evidence=evidence)
+        # get values of individual states and put them in a dictionary
+        for metric, state in states.items():
+            cpd = self.model.get_cpds(metric)
+            self.tick_fatigue_contributors[metric] = float(cpd.values[state]) * self.WEIGHTS[metric]
         fatigue_prob = fatigue_result.values[1]
 
         return fatigue_prob, fatigue_prob, fatigue_prob >= self.ALARM_THRESHOLD
