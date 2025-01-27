@@ -26,8 +26,6 @@ class BiometricFatigueDetector:
             'BlinkRate': 2
         }
         self._normalize_weights()
-
-
         self.setup_bayesian_network()
         self.ALARM_THRESHOLD = 0.60
 

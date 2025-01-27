@@ -9,7 +9,7 @@ from modules.FatigueEvaluator import FatigueEvaluator
 from modules.BiometricFatigueDetector import BiometricFatigueDetector
 
 SIMULATION_DISPLAY_TARGET_FPS = 30
-SIMULATION_TICK_RATE = 120
+SIMULATION_TICK_RATE = 5000
 
 
 class RestRecommendationSystem:
