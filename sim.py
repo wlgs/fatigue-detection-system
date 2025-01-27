@@ -389,5 +389,5 @@ class RestRecommendationSystem:
 
 
 if __name__ == "__main__":
-    system = RestRecommendationSystem("normal", "low_heart_rate")
+    system = RestRecommendationSystem("normal", "normal")
     system.start()
